@@ -4,9 +4,16 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { PlayIcon, PlusIcon, TagIcon, ClockIcon, ArrowTopRightOnSquareIcon } from '@heroicons/react/24/outline';
 import { SpotifyAPI } from '@/lib/spotify';
-import { SpotifyTrack } from '@/types';
+import { SpotifyTrack, Tag } from '@/types';
 import { formatDuration } from '@/lib/utils';
 import { TagSelector } from './tag-selector';
+import { 
+  collection, 
+  query, 
+  where, 
+  getDocs 
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 interface SearchResultsProps {
   query: string;
@@ -14,15 +21,65 @@ interface SearchResultsProps {
   userId: string;
 }
 
+interface SpotifyTrackWithTags extends SpotifyTrack {
+  tags?: Tag[];
+}
+
 export function SearchResults({ query, spotifyApi, userId }: SearchResultsProps) {
   const [selectedTrack, setSelectedTrack] = useState<SpotifyTrack | null>(null);
   const [showTagSelector, setShowTagSelector] = useState(false);
+
+  // Fetch user's tags for reference
+  const { data: allTags = [] } = useQuery({
+    queryKey: ['tags', userId],
+    queryFn: async () => {
+      const q = query(collection(db, 'tags'), where('userId', '==', userId));
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tag));
+    },
+  });
+
+  // Function to fetch tags for a specific track
+  const fetchTrackTags = async (trackId: string): Promise<Tag[]> => {
+    try {
+      const q = query(
+        collection(db, 'songTags'),
+        where('songId', '==', trackId),
+        where('userId', '==', userId)
+      );
+      const snapshot = await getDocs(q);
+      const tagIds = snapshot.docs.map(doc => doc.data().tagId);
+      
+      return allTags.filter(tag => tagIds.includes(tag.id));
+    } catch (error) {
+      console.error('Error fetching track tags:', error);
+      return [];
+    }
+  };
 
   const { data: searchResults, isLoading, error } = useQuery({
     queryKey: ['search', query],
     queryFn: () => spotifyApi.searchTracks(query),
     enabled: query.length > 2,
     staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+
+  // Fetch tracks with their tags
+  const { data: tracksWithTags = [], isLoading: isLoadingTags } = useQuery({
+    queryKey: ['search-tracks-with-tags', userId, searchResults?.tracks?.items?.length],
+    queryFn: async () => {
+      if (!searchResults?.tracks?.items || !allTags.length) return [];
+      
+      const tracksWithTags = await Promise.all(
+        searchResults.tracks.items.map(async (track: SpotifyTrack) => {
+          const tags = await fetchTrackTags(track.id);
+          return { ...track, tags } as SpotifyTrackWithTags;
+        })
+      );
+      
+      return tracksWithTags;
+    },
+    enabled: !!searchResults?.tracks?.items && allTags.length > 0,
   });
 
   const handleTagTrack = (track: SpotifyTrack) => {
@@ -52,7 +109,7 @@ export function SearchResults({ query, spotifyApi, userId }: SearchResultsProps)
     );
   }
 
-  if (isLoading) {
+  if (isLoading || isLoadingTags) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-400"></div>
@@ -71,7 +128,7 @@ export function SearchResults({ query, spotifyApi, userId }: SearchResultsProps)
     );
   }
 
-  const tracks = searchResults?.tracks?.items || [];
+  const tracks = tracksWithTags.length > 0 ? tracksWithTags : (searchResults?.tracks?.items || []);
 
   if (tracks.length === 0) {
     return (
@@ -115,6 +172,26 @@ export function SearchResults({ query, spotifyApi, userId }: SearchResultsProps)
                   {track.artists.map(artist => artist.name).join(', ')}
                 </p>
                 <p className="text-gray-500 text-sm truncate">{track.album.name}</p>
+                
+                {/* Tags */}
+                {(track as any).tags && (track as any).tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {(track as any).tags.slice(0, 2).map((tag: Tag) => (
+                      <span
+                        key={tag.id}
+                        className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white"
+                        style={{ backgroundColor: tag.color }}
+                      >
+                        {tag.name}
+                      </span>
+                    ))}
+                    {(track as any).tags.length > 2 && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-gray-400 bg-gray-700">
+                        +{(track as any).tags.length - 2}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Duration */}

@@ -34,7 +34,7 @@ export function SongLibrary({ userId }: SongLibraryProps) {
 
   // Fetch tagged songs
   const { data: songs = [], isLoading } = useQuery({
-    queryKey: ['taggedSongs', userId],
+    queryKey: ['taggedSongs', userId, tags.length],
     queryFn: async () => {
       // Get all songs for the user
       const songsQuery = query(
@@ -76,7 +76,7 @@ export function SongLibrary({ userId }: SongLibraryProps) {
 
       return songsWithTags;
     },
-    enabled: !!userId, // Changed from tags.length > 0 to ensure it runs when userId exists
+    enabled: !!userId, // Run when userId exists, tags will be included when available
   });
 
   // Filter songs based on search and tag filter

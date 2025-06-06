@@ -10,9 +10,16 @@ import {
   ArrowTopRightOnSquareIcon,
   CalendarDaysIcon
 } from '@heroicons/react/24/outline';
-import { SpotifyTrack } from '@/types';
+import { SpotifyTrack, Tag } from '@/types';
 import { formatDuration } from '@/lib/utils';
 import { TagSelector } from './tag-selector';
+import { 
+  collection, 
+  query, 
+  where, 
+  getDocs 
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 interface RecentSongsProps {
   userId: string;
@@ -20,12 +27,41 @@ interface RecentSongsProps {
 
 interface RecentTrack extends SpotifyTrack {
   played_at: string;
+  tags?: Tag[];
 }
 
 export function RecentSongs({ userId }: RecentSongsProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTrack, setSelectedTrack] = useState<RecentTrack | null>(null);
   const [showTagSelector, setShowTagSelector] = useState(false);
+
+  // Fetch user's tags for reference
+  const { data: allTags = [] } = useQuery({
+    queryKey: ['tags', userId],
+    queryFn: async () => {
+      const q = query(collection(db, 'tags'), where('userId', '==', userId));
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tag));
+    },
+  });
+
+  // Function to fetch tags for a specific track
+  const fetchTrackTags = async (trackId: string): Promise<Tag[]> => {
+    try {
+      const q = query(
+        collection(db, 'songTags'),
+        where('songId', '==', trackId),
+        where('userId', '==', userId)
+      );
+      const snapshot = await getDocs(q);
+      const tagIds = snapshot.docs.map(doc => doc.data().tagId);
+      
+      return allTags.filter(tag => tagIds.includes(tag.id));
+    } catch (error) {
+      console.error('Error fetching track tags:', error);
+      return [];
+    }
+  };
 
   // Fetch recent songs from API
   const { data: recentData, isLoading, error } = useQuery({
@@ -42,7 +78,25 @@ export function RecentSongs({ userId }: RecentSongsProps) {
     retry: 1, // Only retry once for debugging
   });
 
-  const recentTracks = recentData?.tracks || [];
+  // Fetch tracks with their tags
+  const { data: tracksWithTags = [], isLoading: isLoadingTags } = useQuery({
+    queryKey: ['recent-songs-with-tags', userId, recentData?.tracks?.length],
+    queryFn: async () => {
+      if (!recentData?.tracks || !allTags.length) return [];
+      
+      const tracksWithTags = await Promise.all(
+        recentData.tracks.map(async (track: RecentTrack) => {
+          const tags = await fetchTrackTags(track.id);
+          return { ...track, tags };
+        })
+      );
+      
+      return tracksWithTags;
+    },
+    enabled: !!recentData?.tracks && allTags.length > 0,
+  });
+
+  const recentTracks = tracksWithTags.length > 0 ? tracksWithTags : (recentData?.tracks || []);
 
   // Filter tracks based on search query
   const filteredTracks = recentTracks.filter((track: RecentTrack) => {
@@ -94,7 +148,7 @@ export function RecentSongs({ userId }: RecentSongsProps) {
     }
   };
 
-  if (isLoading) {
+  if (isLoading || isLoadingTags) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-400"></div>
@@ -213,6 +267,26 @@ export function RecentSongs({ userId }: RecentSongsProps) {
                       {track.artists.map((artist: any) => artist.name).join(', ')}
                     </p>
                     <p className="text-gray-500 text-xs truncate">{track.album.name}</p>
+                    
+                    {/* Tags */}
+                    {track.tags && track.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {track.tags.slice(0, 2).map((tag) => (
+                          <span
+                            key={tag.id}
+                            className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white"
+                            style={{ backgroundColor: tag.color }}
+                          >
+                            {tag.name}
+                          </span>
+                        ))}
+                        {track.tags.length > 2 && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-gray-400 bg-gray-700">
+                            +{track.tags.length - 2}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Played At */}
