@@ -13,6 +13,7 @@ export const SPOTIFY_CONFIG = {
     'streaming',
     'user-read-playback-state',
     'user-modify-playback-state',
+    'user-read-recently-played', // Added for recent songs feature
   ],
 };
 
@@ -172,6 +173,31 @@ export class SpotifyAPI {
 
     if (!response.ok) {
       throw new Error('Failed to replace playlist tracks');
+    }
+
+    return response.json();
+  }
+
+  async getRecentlyPlayedTracks(limit = 50) {
+    if (!this.accessToken) throw new Error('No access token available');
+
+    const response = await fetch(
+      `https://api.spotify.com/v1/me/player/recently-played?limit=${limit}`,
+      {
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error('Spotify recently played API error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorData
+      });
+      throw new Error(`Failed to get recently played tracks: ${response.status} ${response.statusText} - ${errorData}`);
     }
 
     return response.json();

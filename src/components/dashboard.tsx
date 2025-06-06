@@ -11,20 +11,22 @@ import {
   Cog6ToothIcon,
   HomeIcon,
   ListBulletIcon,
-  FunnelIcon
+  FunnelIcon,
+  ClockIcon
 } from '@heroicons/react/24/outline';
 import { SpotifyAPI } from '@/lib/spotify';
 import { SearchResults } from './search-results';
 import { TagManager } from './tag-manager';
 import PlaylistLibrary from './playlist-library';
 import { SongLibrary } from './song-library';
+import { RecentSongs } from './recent-songs';
 
 interface DashboardProps {
   user: any;
   accessToken: string;
 }
 
-type ActiveView = 'search' | 'library' | 'tags' | 'playlists';
+type ActiveView = 'search' | 'library' | 'tags' | 'playlists' | 'recent';
 
 export default function Dashboard({ user, accessToken }: DashboardProps) {
   const [activeView, setActiveView] = useState<ActiveView>('search');
@@ -39,6 +41,7 @@ export default function Dashboard({ user, accessToken }: DashboardProps) {
   const navigation = [
     { id: 'search', label: 'Search', icon: MagnifyingGlassIcon },
     { id: 'library', label: 'My Library', icon: MusicalNoteIcon },
+    { id: 'recent', label: 'Recent Songs', icon: ClockIcon },
     { id: 'tags', label: 'Tags', icon: TagIcon },
     { id: 'playlists', label: 'Playlists', icon: ListBulletIcon },
   ];
@@ -124,6 +127,7 @@ export default function Dashboard({ user, accessToken }: DashboardProps) {
                 <h2 className="text-2xl font-bold text-white capitalize">
                   {activeView === 'search' && 'Search Music'}
                   {activeView === 'library' && 'My Library'}
+                  {activeView === 'recent' && 'Recent Songs'}
                   {activeView === 'tags' && 'Manage Tags'}
                   {activeView === 'playlists' && 'My Playlists'}
                 </h2>
@@ -161,6 +165,9 @@ export default function Dashboard({ user, accessToken }: DashboardProps) {
             )}
             {activeView === 'library' && (
               <SongLibrary userId={user.id} />
+            )}
+            {activeView === 'recent' && (
+              <RecentSongs userId={user.id} />
             )}
             {activeView === 'tags' && (
               <TagManager userId={user.id} />
