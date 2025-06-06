@@ -6,6 +6,7 @@ export async function POST(request: NextRequest) {
   // Clear all auth cookies
   response.cookies.delete('spotify_access_token');
   response.cookies.delete('spotify_refresh_token');
+  response.cookies.delete('spotify_user_id');
   response.cookies.delete('user_profile');
 
   return response;

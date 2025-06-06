@@ -2,28 +2,35 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Tags - users can read/write their own tags
-    match /tags/{tagId} {
-      allow read, write: if request.auth != null && 
-        (resource == null || resource.data.userId == request.auth.uid);
+    // Allow read/write access for development
+    // TODO: Implement proper authentication-based rules for production
+    match /{document=**} {
+      allow read, write: if true;
     }
+    
+    // Future rules for when Firebase Auth is implemented:
+    // Tags - users can read/write their own tags
+    // match /tags/{tagId} {
+    //   allow read, write: if request.auth != null && 
+    //     (resource == null || resource.data.userId == request.auth.uid);
+    // }
     
     // Songs - users can read/write their own songs
-    match /songs/{songId} {
-      allow read, write: if request.auth != null && 
-        (resource == null || resource.data.userId == request.auth.uid);
-    }
+    // match /songs/{songId} {
+    //   allow read, write: if request.auth != null && 
+    //     (resource == null || resource.data.userId == request.auth.uid);
+    // }
     
     // Playlists - users can read/write their own playlists
-    match /playlists/{playlistId} {
-      allow read, write: if request.auth != null && 
-        (resource == null || resource.data.userId == request.auth.uid);
-    }
+    // match /playlists/{playlistId} {
+    //   allow read, write: if request.auth != null && 
+    //     (resource == null || resource.data.userId == request.auth.uid);
+    // }
     
     // Song tags - users can read/write their own song tags
-    match /songTags/{songTagId} {
-      allow read, write: if request.auth != null && 
-        (resource == null || resource.data.userId == request.auth.uid);
-    }
+    // match /songTags/{songTagId} {
+    //   allow read, write: if request.auth != null && 
+    //     (resource == null || resource.data.userId == request.auth.uid);
+    // }
   }
 }

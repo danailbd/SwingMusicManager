@@ -39,8 +39,9 @@ export function SongLibrary({ userId }: SongLibraryProps) {
       // Get all songs for the user
       const songsQuery = query(
         collection(db, 'songs'),
-        where('userId', '==', userId),
-        orderBy('createdAt', 'desc')
+        where('userId', '==', userId)
+        // Note: orderBy removed temporarily to avoid composite index requirement
+        // Will be sorted in JavaScript below
       );
       const songsSnapshot = await getDocs(songsQuery);
       const songs = songsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TaggedSong));
@@ -66,9 +67,16 @@ export function SongLibrary({ userId }: SongLibraryProps) {
         })
       );
 
+      // Sort songs by createdAt in JavaScript (temporary workaround)
+      songsWithTags.sort((a, b) => {
+        const aDate = a.createdAt instanceof Date ? a.createdAt : new Date(a.createdAt);
+        const bDate = b.createdAt instanceof Date ? b.createdAt : new Date(b.createdAt);
+        return bDate.getTime() - aDate.getTime();
+      });
+
       return songsWithTags;
     },
-    enabled: tags.length > 0,
+    enabled: !!userId, // Changed from tags.length > 0 to ensure it runs when userId exists
   });
 
   // Filter songs based on search and tag filter

@@ -70,6 +70,14 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Store the Spotify user ID separately for easy access
+    response.cookies.set('spotify_user_id', user.id, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 30, // 30 days (longer than access token)
+    });
+
     response.cookies.set('user_profile', JSON.stringify(user), {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

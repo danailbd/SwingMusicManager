@@ -37,7 +37,7 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    const spotify = new SpotifyApi(accessToken);
+    const spotify = new SpotifyAPI(accessToken);
     
     let spotifyPlaylistId = playlistData.spotifyId;
     

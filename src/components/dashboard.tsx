@@ -16,7 +16,7 @@ import {
 import { SpotifyAPI } from '@/lib/spotify';
 import { SearchResults } from './search-results';
 import { TagManager } from './tag-manager';
-import PlaylistManager from './playlist-manager';
+import PlaylistLibrary from './playlist-library';
 import { SongLibrary } from './song-library';
 
 interface DashboardProps {
@@ -55,17 +55,23 @@ export default function Dashboard({ user, accessToken }: DashboardProps) {
             </div>
 
             {/* User Info */}
-            <div className="flex items-center space-x-3 mb-8 p-3 bg-white/5 rounded-lg">
-              {user.images?.[0] && (
-                <img 
-                  src={user.images[0].url} 
-                  alt={user.display_name}
-                  className="w-10 h-10 rounded-full"
-                />
-              )}
-              <div className="flex-1 min-w-0">
-                <p className="text-white font-medium truncate">{user.display_name}</p>
-                <p className="text-gray-400 text-sm truncate">{user.email}</p>
+            <div className="mb-8 p-4 bg-gradient-to-r from-green-500/20 to-blue-500/20 rounded-lg border border-green-500/30">
+              <div className="flex items-center space-x-3">
+                {user.images?.[0] && (
+                  <img 
+                    src={user.images[0].url} 
+                    alt={user.display_name}
+                    className="w-12 h-12 rounded-full border-2 border-green-400"
+                  />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-semibold truncate">{user.display_name}</p>
+                  <p className="text-gray-300 text-sm truncate">{user.email}</p>
+                  <div className="flex items-center mt-2">
+                    <div className="w-3 h-3 bg-green-400 rounded-full mr-2 animate-pulse"></div>
+                    <span className="text-green-400 font-medium text-sm">🎵 Connected to Spotify</span>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -76,15 +82,21 @@ export default function Dashboard({ user, accessToken }: DashboardProps) {
                 return (
                   <button
                     key={item.id}
-                    onClick={() => setActiveView(item.id as ActiveView)}
-                    className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors duration-200 ${
+                    onClick={() => {
+                      console.log('Navigation clicked:', item.id);
+                      setActiveView(item.id as ActiveView);
+                    }}
+                    className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-all duration-200 ${
                       activeView === item.id
-                        ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                        : 'text-gray-300 hover:bg-white/5 hover:text-white'
+                        ? 'bg-green-500/20 text-green-400 border border-green-500/30 shadow-lg'
+                        : 'text-gray-300 hover:bg-white/10 hover:text-white hover:scale-105 cursor-pointer'
                     }`}
                   >
                     <Icon className="w-5 h-5" />
-                    <span>{item.label}</span>
+                    <span className="font-medium">{item.label}</span>
+                    {activeView === item.id && (
+                      <div className="ml-auto w-2 h-2 bg-green-400 rounded-full"></div>
+                    )}
                   </button>
                 );
               })}
@@ -108,12 +120,18 @@ export default function Dashboard({ user, accessToken }: DashboardProps) {
           {/* Header */}
           <header className="bg-black/10 backdrop-blur-md border-b border-white/10 p-6">
             <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-white capitalize">
-                {activeView === 'search' && 'Search Music'}
-                {activeView === 'library' && 'My Library'}
-                {activeView === 'tags' && 'Manage Tags'}
-                {activeView === 'playlists' && 'My Playlists'}
-              </h2>
+              <div className="flex items-center space-x-4">
+                <h2 className="text-2xl font-bold text-white capitalize">
+                  {activeView === 'search' && 'Search Music'}
+                  {activeView === 'library' && 'My Library'}
+                  {activeView === 'tags' && 'Manage Tags'}
+                  {activeView === 'playlists' && 'My Playlists'}
+                </h2>
+                <div className="flex items-center space-x-2 px-3 py-1 bg-green-500/20 rounded-full">
+                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                  <span className="text-green-400 text-xs font-medium">Spotify Connected</span>
+                </div>
+              </div>
               
               {activeView === 'search' && (
                 <div className="flex-1 max-w-md mx-8">
@@ -148,10 +166,9 @@ export default function Dashboard({ user, accessToken }: DashboardProps) {
               <TagManager userId={user.id} />
             )}
             {activeView === 'playlists' && (
-              <PlaylistManager 
-                selectedSongs={[]}
-                availableTags={[]}
-                onClose={() => {}}
+              <PlaylistLibrary 
+                userId={user.id}
+                spotifyApi={spotifyApi}
               />
             )}
           </main>

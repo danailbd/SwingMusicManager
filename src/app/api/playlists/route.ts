@@ -26,8 +26,9 @@ export async function GET(request: NextRequest) {
     const playlistsRef = collection(db, 'playlists');
     const q = query(
       playlistsRef,
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
+      where('userId', '==', userId)
+      // Note: orderBy removed temporarily to avoid composite index requirement
+      // Will be sorted in JavaScript below
     );
     
     const snapshot = await getDocs(q);
@@ -35,6 +36,13 @@ export async function GET(request: NextRequest) {
       id: doc.id,
       ...doc.data()
     } as Playlist));
+
+    // Sort playlists by createdAt in JavaScript (temporary workaround)
+    playlists.sort((a, b) => {
+      const aDate = a.createdAt?.toDate?.() || new Date(a.createdAt);
+      const bDate = b.createdAt?.toDate?.() || new Date(b.createdAt);
+      return bDate.getTime() - aDate.getTime();
+    });
 
     return NextResponse.json(playlists);
   } catch (error) {
