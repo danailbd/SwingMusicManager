@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { MagnifyingGlassIcon, FunnelIcon, PlayIcon, ArrowTopRightOnSquareIcon, ClockIcon, TagIcon } from '@heroicons/react/24/outline';
 import { TaggedSong, Tag } from '@/types';
 import { formatDuration } from '@/lib/utils';
+import { useMusicPlayer } from './music-player-context';
 import { 
   collection, 
   query, 
@@ -21,6 +22,7 @@ interface SongLibraryProps {
 export function SongLibrary({ userId }: SongLibraryProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTagFilter, setSelectedTagFilter] = useState<string>('');
+  const { playSong, playPlaylist, currentSong, isSpotifyReady } = useMusicPlayer();
 
   // Fetch user's tags for filtering
   const { data: tags = [] } = useQuery({
@@ -234,16 +236,49 @@ export function SongLibrary({ userId }: SongLibraryProps) {
                       <ArrowTopRightOnSquareIcon className="w-5 h-5" />
                     </a>
 
-                    {song.previewUrl && (
+                    {isSpotifyReady && song.uri ? (
                       <button
-                        onClick={() => {
-                          const audio = new Audio(song.previewUrl!);
-                          audio.play();
-                        }}
-                        className="p-2 text-gray-400 hover:text-green-400 hover:bg-green-500/10 rounded-lg transition-colors duration-200"
-                        title="Play preview"
+                        onClick={() => playSong(song, filteredSongs)}
+                        className={`p-2 transition-colors duration-200 rounded-lg ${
+                          currentSong?.id === song.id 
+                            ? 'text-green-400 bg-green-500/20' 
+                            : 'text-gray-400 hover:text-green-400 hover:bg-green-500/10'
+                        }`}
+                        title="Play full song via Spotify"
                       >
                         <PlayIcon className="w-5 h-5" />
+                        <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-400 rounded-full"></span>
+                      </button>
+                    ) : song.previewUrl ? (
+                      <button
+                        onClick={() => playSong(song, filteredSongs)}
+                        className={`p-2 transition-colors duration-200 rounded-lg ${
+                          currentSong?.id === song.id 
+                            ? 'text-green-400 bg-green-500/20' 
+                            : 'text-gray-400 hover:text-green-400 hover:bg-green-500/10'
+                        }`}
+                        title="Play 30-second preview"
+                      >
+                        <PlayIcon className="w-5 h-5" />
+                      </button>
+                    ) : (
+                      <div className="p-2 text-gray-600" title="No preview available">
+                        <PlayIcon className="w-5 h-5 opacity-30" />
+                      </div>
+                    )}
+
+                    {/* Play All Button (only show on first song if multiple songs) */}
+                    {filteredSongs.length > 1 && filteredSongs.indexOf(song) === 0 && (
+                      <button
+                        onClick={() => {
+                          // Find the first song with a preview
+                          const firstWithPreview = filteredSongs.findIndex(song => song.previewUrl);
+                          playPlaylist(filteredSongs, firstWithPreview >= 0 ? firstWithPreview : 0);
+                        }}
+                        className="px-3 py-1 text-xs bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors duration-200"
+                        title="Play all songs"
+                      >
+                        Play All
                       </button>
                     )}
                   </div>

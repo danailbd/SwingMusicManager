@@ -7,9 +7,10 @@ import { SpotifyAPI } from '@/lib/spotify';
 import { SpotifyTrack, Tag } from '@/types';
 import { formatDuration } from '@/lib/utils';
 import { TagSelector } from './tag-selector';
+import { useMusicPlayer } from './music-player-context';
 import { 
   collection, 
-  query, 
+  query as firestoreQuery, 
   where, 
   getDocs 
 } from 'firebase/firestore';
@@ -28,12 +29,13 @@ interface SpotifyTrackWithTags extends SpotifyTrack {
 export function SearchResults({ query, spotifyApi, userId }: SearchResultsProps) {
   const [selectedTrack, setSelectedTrack] = useState<SpotifyTrack | null>(null);
   const [showTagSelector, setShowTagSelector] = useState(false);
+  const { playSong, currentSong, isSpotifyReady } = useMusicPlayer();
 
   // Fetch user's tags for reference
   const { data: allTags = [] } = useQuery({
     queryKey: ['tags', userId],
     queryFn: async () => {
-      const q = query(collection(db, 'tags'), where('userId', '==', userId));
+      const q = firestoreQuery(collection(db, 'tags'), where('userId', '==', userId));
       const snapshot = await getDocs(q);
       return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tag));
     },
@@ -42,13 +44,13 @@ export function SearchResults({ query, spotifyApi, userId }: SearchResultsProps)
   // Function to fetch tags for a specific track
   const fetchTrackTags = async (trackId: string): Promise<Tag[]> => {
     try {
-      const q = query(
+      const q = firestoreQuery(
         collection(db, 'songTags'),
         where('songId', '==', trackId),
         where('userId', '==', userId)
       );
       const snapshot = await getDocs(q);
-      const tagIds = snapshot.docs.map(doc => doc.data().tagId);
+      const tagIds = snapshot.docs.map(doc => (doc.data() as any).tagId);
       
       return allTags.filter(tag => tagIds.includes(tag.id));
     } catch (error) {
@@ -86,6 +88,24 @@ export function SearchResults({ query, spotifyApi, userId }: SearchResultsProps)
     setSelectedTrack(track);
     setShowTagSelector(true);
   };
+
+  // Convert SpotifyTrack to TaggedSong format for music player
+  const convertToTaggedSong = (track: SpotifyTrack): any => ({
+    id: track.id,
+    spotifyId: track.id,
+    name: track.name,
+    artist: track.artists.map(artist => artist.name).join(', '),
+    album: track.album.name,
+    imageUrl: track.album.images[0]?.url || '',
+    duration: track.duration_ms,
+    previewUrl: track.preview_url,
+    spotifyUrl: track.external_urls.spotify,
+    uri: track.uri,
+    userId: userId,
+    tags: (track as any).tags || [],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
 
   if (!query) {
     return (
@@ -220,17 +240,31 @@ export function SearchResults({ query, spotifyApi, userId }: SearchResultsProps)
                   <ArrowTopRightOnSquareIcon className="w-5 h-5" />
                 </a>
 
-                {track.preview_url && (
+                {(isSpotifyReady && track.uri) || track.preview_url ? (
                   <button
                     onClick={() => {
-                      const audio = new Audio(track.preview_url!);
-                      audio.play();
+                      const taggedSong = convertToTaggedSong(track);
+                      const allTaggedSongs = tracks
+                        .filter((t: SpotifyTrack) => (isSpotifyReady && t.uri) || t.preview_url)
+                        .map(convertToTaggedSong);
+                      playSong(taggedSong, allTaggedSongs);
                     }}
-                    className="p-2 text-gray-400 hover:text-green-400 hover:bg-green-500/10 rounded-lg transition-colors duration-200"
-                    title="Play preview"
+                    className={`p-2 transition-colors duration-200 rounded-lg relative ${
+                      currentSong?.spotifyId === track.id 
+                        ? 'text-green-400 bg-green-500/20' 
+                        : 'text-gray-400 hover:text-green-400 hover:bg-green-500/10'
+                    }`}
+                    title={isSpotifyReady && track.uri ? "Play full song via Spotify" : "Play 30-second preview"}
                   >
                     <PlayIcon className="w-5 h-5" />
+                    {isSpotifyReady && track.uri && (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-400 rounded-full"></span>
+                    )}
                   </button>
+                ) : (
+                  <div className="p-2 text-gray-600" title="No preview available">
+                    <PlayIcon className="w-5 h-5 opacity-30" />
+                  </div>
                 )}
               </div>
             </div>

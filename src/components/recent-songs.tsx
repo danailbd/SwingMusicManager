@@ -13,6 +13,7 @@ import {
 import { SpotifyTrack, Tag } from '@/types';
 import { formatDuration } from '@/lib/utils';
 import { TagSelector } from './tag-selector';
+import { useMusicPlayer } from './music-player-context';
 import { 
   collection, 
   query, 
@@ -34,6 +35,20 @@ export function RecentSongs({ userId }: RecentSongsProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTrack, setSelectedTrack] = useState<RecentTrack | null>(null);
   const [showTagSelector, setShowTagSelector] = useState(false);
+  const { playSong, currentSong, playPlaylist, isSpotifyReady } = useMusicPlayer();
+
+  // Convert SpotifyTrack to TaggedSong format for music player
+  const convertToTaggedSong = (track: RecentTrack) => ({
+    id: track.id,
+    title: track.name,
+    artist: track.artists.map((artist: any) => artist.name).join(', '),
+    album: track.album.name,
+    duration: track.duration_ms,
+    previewUrl: track.preview_url,
+    albumArt: track.album?.images?.[0]?.url || null,
+    spotifyUrl: track.external_urls.spotify,
+    tags: track.tags || []
+  });
 
   // Fetch user's tags for reference
   const { data: allTags = [] } = useQuery({
@@ -219,6 +234,19 @@ export function RecentSongs({ userId }: RecentSongsProps) {
           <h3 className="text-lg font-semibold text-white">
             {searchQuery ? `Search Results (${sortedTracks.length})` : `Recently Played (${sortedTracks.length})`}
           </h3>
+          
+          {sortedTracks.length > 0 && (
+            <button
+              onClick={() => {
+                const playlist = sortedTracks.map(convertToTaggedSong);
+                playPlaylist(playlist, 0);
+              }}
+              className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors duration-200 flex items-center space-x-2"
+            >
+              <PlayIcon className="w-4 h-4" />
+              <span>Play All</span>
+            </button>
+          )}
         </div>
 
         {sortedTracks.length === 0 ? (
@@ -320,17 +348,31 @@ export function RecentSongs({ userId }: RecentSongsProps) {
                       <ArrowTopRightOnSquareIcon className="w-4 h-4" />
                     </a>
 
-                    {track.preview_url && (
+                    {(isSpotifyReady && track.uri) || track.preview_url ? (
                       <button
                         onClick={() => {
-                          const audio = new Audio(track.preview_url!);
-                          audio.play();
+                          const playlist = sortedTracks
+                            .filter((t: RecentTrack) => (isSpotifyReady && t.uri) || t.preview_url)
+                            .map(convertToTaggedSong);
+                          const currentIndex = playlist.findIndex((song: any) => song.id === track.id);
+                          playPlaylist(playlist, Math.max(0, currentIndex));
                         }}
-                        className="p-2 text-gray-400 hover:text-green-400 hover:bg-green-500/10 rounded-lg transition-colors duration-200"
-                        title="Play preview"
+                        className={`p-2 rounded-lg transition-colors duration-200 relative ${
+                          currentSong?.id === track.id
+                            ? 'text-green-400 bg-green-500/20'
+                            : 'text-gray-400 hover:text-green-400 hover:bg-green-500/10'
+                        }`}
+                        title={isSpotifyReady && track.uri ? "Play full song via Spotify" : "Play 30-second preview"}
                       >
                         <PlayIcon className="w-4 h-4" />
+                        {isSpotifyReady && track.uri && (
+                          <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-400 rounded-full"></span>
+                        )}
                       </button>
+                    ) : (
+                      <div className="p-2 text-gray-600" title="No preview available">
+                        <PlayIcon className="w-4 h-4 opacity-30" />
+                      </div>
                     )}
                   </div>
                 </div>

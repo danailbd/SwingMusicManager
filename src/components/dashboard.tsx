@@ -20,6 +20,9 @@ import { TagManager } from './tag-manager';
 import PlaylistLibrary from './playlist-library';
 import { SongLibrary } from './song-library';
 import { RecentSongs } from './recent-songs';
+import { MusicPlayer } from './music-player';
+import { SpotifyPlayer } from './spotify-player';
+import { useMusicPlayer } from './music-player-context';
 
 interface DashboardProps {
   user: any;
@@ -32,6 +35,7 @@ export default function Dashboard({ user, accessToken }: DashboardProps) {
   const [activeView, setActiveView] = useState<ActiveView>('search');
   const [searchQuery, setSearchQuery] = useState('');
   const [spotifyApi] = useState(() => new SpotifyAPI(accessToken));
+  const { currentSong, queue, isPlayerVisible, nextSong, previousSong } = useMusicPlayer();
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -181,6 +185,19 @@ export default function Dashboard({ user, accessToken }: DashboardProps) {
           </main>
         </div>
       </div>
+
+      {/* Music Player */}
+      {isPlayerVisible && currentSong && (
+        <MusicPlayer
+          currentSong={currentSong}
+          queue={queue}
+          onNext={nextSong}
+          onPrevious={previousSong}
+        />
+      )}
+
+      {/* Spotify Web Playback SDK */}
+      <SpotifyPlayer accessToken={accessToken} />
     </div>
   );
 }
