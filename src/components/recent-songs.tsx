@@ -35,19 +35,24 @@ export function RecentSongs({ userId }: RecentSongsProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTrack, setSelectedTrack] = useState<RecentTrack | null>(null);
   const [showTagSelector, setShowTagSelector] = useState(false);
-  const { playSong, currentSong, playPlaylist, isSpotifyReady } = useMusicPlayer();
+  const { playSong, currentSong, isSpotifyReady } = useMusicPlayer();
 
   // Convert SpotifyTrack to TaggedSong format for music player
   const convertToTaggedSong = (track: RecentTrack) => ({
     id: track.id,
-    title: track.name,
+    spotifyId: track.id,
+    name: track.name,
     artist: track.artists.map((artist: any) => artist.name).join(', '),
     album: track.album.name,
+    imageUrl: track.album?.images?.[0]?.url || '',
     duration: track.duration_ms,
     previewUrl: track.preview_url,
-    albumArt: track.album?.images?.[0]?.url || null,
     spotifyUrl: track.external_urls.spotify,
-    tags: track.tags || []
+    uri: track.uri,
+    userId: userId,
+    tags: track.tags || [],
+    createdAt: new Date(),
+    updatedAt: new Date()
   });
 
   // Fetch user's tags for reference
@@ -234,19 +239,6 @@ export function RecentSongs({ userId }: RecentSongsProps) {
           <h3 className="text-lg font-semibold text-white">
             {searchQuery ? `Search Results (${sortedTracks.length})` : `Recently Played (${sortedTracks.length})`}
           </h3>
-          
-          {sortedTracks.length > 0 && (
-            <button
-              onClick={() => {
-                const playlist = sortedTracks.map(convertToTaggedSong);
-                playPlaylist(playlist, 0);
-              }}
-              className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors duration-200 flex items-center space-x-2"
-            >
-              <PlayIcon className="w-4 h-4" />
-              <span>Play All</span>
-            </button>
-          )}
         </div>
 
         {sortedTracks.length === 0 ? (
@@ -354,8 +346,8 @@ export function RecentSongs({ userId }: RecentSongsProps) {
                           const playlist = sortedTracks
                             .filter((t: RecentTrack) => (isSpotifyReady && t.uri) || t.preview_url)
                             .map(convertToTaggedSong);
-                          const currentIndex = playlist.findIndex((song: any) => song.id === track.id);
-                          playPlaylist(playlist, Math.max(0, currentIndex));
+                          const currentTrackSong = convertToTaggedSong(track);
+                          playSong(currentTrackSong, playlist);
                         }}
                         className={`p-2 rounded-lg transition-colors duration-200 relative ${
                           currentSong?.id === track.id

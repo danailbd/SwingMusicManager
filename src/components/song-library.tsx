@@ -266,21 +266,6 @@ export function SongLibrary({ userId }: SongLibraryProps) {
                         <PlayIcon className="w-5 h-5 opacity-30" />
                       </div>
                     )}
-
-                    {/* Play All Button (only show on first song if multiple songs) */}
-                    {filteredSongs.length > 1 && filteredSongs.indexOf(song) === 0 && (
-                      <button
-                        onClick={() => {
-                          // Find the first song with a preview
-                          const firstWithPreview = filteredSongs.findIndex(song => song.previewUrl);
-                          playPlaylist(filteredSongs, firstWithPreview >= 0 ? firstWithPreview : 0);
-                        }}
-                        className="px-3 py-1 text-xs bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors duration-200"
-                        title="Play all songs"
-                      >
-                        Play All
-                      </button>
-                    )}
                   </div>
                 </div>
               </div>
