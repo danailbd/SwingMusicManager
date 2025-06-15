@@ -15,6 +15,7 @@ import {
   ClockIcon
 } from '@heroicons/react/24/outline';
 import { SpotifyAPI } from '@/lib/spotify';
+import { useAppStatePersistence, type ActiveView } from '@/lib/use-app-state-persistence';
 import { SearchResults } from './search-results';
 import { TagManager } from './tag-manager';
 import PlaylistLibrary from './playlist-library';
@@ -23,21 +24,75 @@ import { RecentSongs } from './recent-songs';
 import { MusicPlayer } from './music-player';
 import { SpotifyPlayer } from './spotify-player';
 import { useMusicPlayer } from './music-player-context';
+import { AppStateDebugger } from './app-state-debugger';
+import { PersistenceSettings } from './persistence-settings';
 
 interface DashboardProps {
   user: any;
   accessToken: string;
 }
 
-type ActiveView = 'search' | 'library' | 'tags' | 'playlists' | 'recent';
-
 export default function Dashboard({ user, accessToken }: DashboardProps) {
-  const [activeView, setActiveView] = useState<ActiveView>('search');
-  const [searchQuery, setSearchQuery] = useState('');
+  // All hooks must be called in the same order every time
+  const {
+    appState,
+    isLoaded,
+    updateActiveView,
+    updateSearchQuery,
+    clearState
+  } = useAppStatePersistence();
+  
+  const [searchQuery, setSearchQueryState] = useState('');
   const [spotifyApi] = useState(() => new SpotifyAPI(accessToken));
+  const [showPersistenceSettings, setShowPersistenceSettings] = useState(false);
+  
+  // Always call useMusicPlayer hook, regardless of loading state
   const { currentSong, queue, isPlayerVisible, nextSong, previousSong } = useMusicPlayer();
 
+  // Initialize state from persistence when loaded
+  useEffect(() => {
+    if (isLoaded && appState) {
+      setSearchQueryState(appState.searchQuery || '');
+    }
+  }, [isLoaded, appState]);
+
+  // Auto-resume functionality for returning users
+  useEffect(() => {
+    if (!isLoaded || !appState) return; // Early return to avoid unnecessary work
+    
+    if (appState.currentSong && appState.isPlayerVisible) {
+      const resumePlayback = async () => {
+        console.log('Attempting to resume playback:', appState.currentSong?.name);
+        
+        // Only auto-resume if we have a recently played song (within last hour)
+        const timeSinceUpdate = Date.now() - appState.lastUpdated;
+        const oneHour = 60 * 60 * 1000;
+        
+        if (timeSinceUpdate < oneHour && appState.currentSong) {
+          // If user had a song playing recently, show player but don't auto-play
+          // User can manually resume if they want
+          console.log('Restoring player state without auto-playing');
+        }
+      };
+      
+      // Small delay to let other components initialize
+      setTimeout(resumePlayback, 1000);
+    }
+  }, [isLoaded, appState]);
+
+  // Update search query with persistence
+  const setSearchQuery = (query: string) => {
+    setSearchQueryState(query);
+    updateSearchQuery(query);
+  };
+
+  // Update active view with persistence
+  const setActiveView = (view: ActiveView) => {
+    updateActiveView(view);
+  };
+
   const handleLogout = async () => {
+    clearState(); // Clear persisted state on logout
     await fetch('/api/auth/logout', { method: 'POST' });
     window.location.href = '/';
   };
@@ -49,6 +104,19 @@ export default function Dashboard({ user, accessToken }: DashboardProps) {
     { id: 'tags', label: 'Tags', icon: TagIcon },
     { id: 'playlists', label: 'Playlists', icon: ListBulletIcon },
   ];
+
+  // Show loading state while app state is loading
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-violet-900 flex items-center justify-center">
+        <div className="text-center">
+          <MusicalNoteIcon className="w-16 h-16 text-green-400 mx-auto mb-4 animate-pulse" />
+          <h2 className="text-2xl font-bold text-white mb-2">Loading Song Tagger</h2>
+          <p className="text-gray-400">Restoring your previous session...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-violet-900">
@@ -86,6 +154,7 @@ export default function Dashboard({ user, accessToken }: DashboardProps) {
             <nav className="space-y-2">
               {navigation.map((item) => {
                 const Icon = item.icon;
+                const isActive = appState?.activeView === item.id;
                 return (
                   <button
                     key={item.id}
@@ -94,14 +163,14 @@ export default function Dashboard({ user, accessToken }: DashboardProps) {
                       setActiveView(item.id as ActiveView);
                     }}
                     className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-all duration-200 ${
-                      activeView === item.id
+                      isActive
                         ? 'bg-green-500/20 text-green-400 border border-green-500/30 shadow-lg'
                         : 'text-gray-300 hover:bg-white/10 hover:text-white hover:scale-105 cursor-pointer'
                     }`}
                   >
                     <Icon className="w-5 h-5" />
                     <span className="font-medium">{item.label}</span>
-                    {activeView === item.id && (
+                    {isActive && (
                       <div className="ml-auto w-2 h-2 bg-green-400 rounded-full"></div>
                     )}
                   </button>
@@ -111,7 +180,14 @@ export default function Dashboard({ user, accessToken }: DashboardProps) {
           </div>
 
           {/* Bottom Actions */}
-          <div className="absolute bottom-0 left-0 right-0 w-64 p-6 border-t border-white/10">
+          <div className="absolute bottom-0 left-0 right-0 w-64 p-6 border-t border-white/10 space-y-2">
+            <button
+              onClick={() => setShowPersistenceSettings(true)}
+              className="w-full flex items-center space-x-3 px-3 py-2 text-gray-300 hover:bg-blue-500/10 hover:text-blue-400 rounded-lg transition-colors duration-200"
+            >
+              <Cog6ToothIcon className="w-5 h-5" />
+              <span>App Settings</span>
+            </button>
             <button
               onClick={handleLogout}
               className="w-full flex items-center space-x-3 px-3 py-2 text-gray-300 hover:bg-red-500/10 hover:text-red-400 rounded-lg transition-colors duration-200"
@@ -129,11 +205,11 @@ export default function Dashboard({ user, accessToken }: DashboardProps) {
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
                 <h2 className="text-2xl font-bold text-white capitalize">
-                  {activeView === 'search' && 'Search Music'}
-                  {activeView === 'library' && 'My Library'}
-                  {activeView === 'recent' && 'Recent Songs'}
-                  {activeView === 'tags' && 'Manage Tags'}
-                  {activeView === 'playlists' && 'My Playlists'}
+                  {appState?.activeView === 'search' && 'Search Music'}
+                  {appState?.activeView === 'library' && 'My Library'}
+                  {appState?.activeView === 'recent' && 'Recent Songs'}
+                  {appState?.activeView === 'tags' && 'Manage Tags'}
+                  {appState?.activeView === 'playlists' && 'My Playlists'}
                 </h2>
                 <div className="flex items-center space-x-2 px-3 py-1 bg-green-500/20 rounded-full">
                   <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
@@ -141,7 +217,7 @@ export default function Dashboard({ user, accessToken }: DashboardProps) {
                 </div>
               </div>
               
-              {activeView === 'search' && (
+              {appState?.activeView === 'search' && (
                 <div className="flex-1 max-w-md mx-8">
                   <div className="relative">
                     <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -160,27 +236,38 @@ export default function Dashboard({ user, accessToken }: DashboardProps) {
 
           {/* Content Area */}
           <main className="flex-1 overflow-auto p-6">
-            {activeView === 'search' && (
-              <SearchResults 
-                query={searchQuery} 
-                spotifyApi={spotifyApi}
-                userId={user.id}
-              />
-            )}
-            {activeView === 'library' && (
-              <SongLibrary userId={user.id} />
-            )}
-            {activeView === 'recent' && (
-              <RecentSongs userId={user.id} />
-            )}
-            {activeView === 'tags' && (
-              <TagManager userId={user.id} />
-            )}
-            {activeView === 'playlists' && (
-              <PlaylistLibrary 
-                userId={user.id}
-                spotifyApi={spotifyApi}
-              />
+            {!isLoaded ? (
+              <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                  <MusicalNoteIcon className="w-12 h-12 text-green-400 mx-auto mb-4 animate-pulse" />
+                  <p className="text-gray-400">Loading your content...</p>
+                </div>
+              </div>
+            ) : (
+              <>
+                {appState?.activeView === 'search' && (
+                  <SearchResults 
+                    query={searchQuery} 
+                    spotifyApi={spotifyApi}
+                    userId={user.id}
+                  />
+                )}
+                {appState?.activeView === 'library' && (
+                  <SongLibrary userId={user.id} />
+                )}
+                {appState?.activeView === 'recent' && (
+                  <RecentSongs userId={user.id} />
+                )}
+                {appState?.activeView === 'tags' && (
+                  <TagManager userId={user.id} />
+                )}
+                {appState?.activeView === 'playlists' && (
+                  <PlaylistLibrary 
+                    userId={user.id}
+                    spotifyApi={spotifyApi}
+                  />
+                )}
+              </>
             )}
           </main>
         </div>
@@ -198,6 +285,15 @@ export default function Dashboard({ user, accessToken }: DashboardProps) {
 
       {/* Spotify Web Playback SDK */}
       <SpotifyPlayer accessToken={accessToken} />
+
+      {/* App State Debugger (Development only) */}
+      {process.env.NODE_ENV === 'development' && <AppStateDebugger />}
+
+      {/* Persistence Settings Modal */}
+      <PersistenceSettings 
+        isOpen={showPersistenceSettings} 
+        onClose={() => setShowPersistenceSettings(false)} 
+      />
     </div>
   );
 }

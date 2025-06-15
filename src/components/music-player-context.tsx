@@ -5,12 +5,14 @@
  * - Current playing song
  * - Playback queue
  * - Player controls
+ * - State persistence
  */
 
 'use client';
 
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
 import { TaggedSong } from '@/types';
+import { useAppStatePersistence } from '@/lib/use-app-state-persistence';
 
 interface MusicPlayerContextType {
   // Player state
@@ -57,13 +59,57 @@ interface MusicPlayerProviderProps {
 }
 
 export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
-  const [currentSong, setCurrentSong] = useState<TaggedSong | null>(null);
-  const [queue, setQueue] = useState<TaggedSong[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isPlayerVisible, setIsPlayerVisible] = useState(false);
+  const {
+    appState,
+    isLoaded,
+    updateCurrentSong: persistCurrentSong,
+    updateQueue: persistQueue,
+    updatePlayerVisibility: persistPlayerVisibility,
+    updatePlaybackPosition: persistPlaybackPosition,
+  } = useAppStatePersistence();
+
+  const [currentSong, setCurrentSongState] = useState<TaggedSong | null>(null);
+  const [queue, setQueueState] = useState<TaggedSong[]>([]);
+  const [currentIndex, setCurrentIndexState] = useState(0);
+  const [isPlayerVisible, setIsPlayerVisibleState] = useState(false);
   const [isSpotifyReady, setIsSpotifyReady] = useState(false);
   const [spotifyPlayer, setSpotifyPlayer] = useState<any>(null);
   const [spotifyPlayerState, setSpotifyPlayerState] = useState<any>(null);
+
+  // Initialize state from persistence when loaded
+  useEffect(() => {
+    if (isLoaded && appState) {
+      if (appState.currentSong) {
+        setCurrentSongState(appState.currentSong);
+      }
+      if (appState.queue.length > 0) {
+        setQueueState(appState.queue);
+        setCurrentIndexState(appState.currentIndex);
+      }
+      setIsPlayerVisibleState(appState.isPlayerVisible);
+    }
+  }, [isLoaded, appState]);
+
+  // Update persistence when local state changes
+  const setCurrentSong = useCallback((song: TaggedSong | null) => {
+    setCurrentSongState(song);
+    persistCurrentSong(song);
+  }, [persistCurrentSong]);
+
+  const setQueue = useCallback((newQueue: TaggedSong[]) => {
+    setQueueState(newQueue);
+    persistQueue(newQueue, currentIndex);
+  }, [persistQueue, currentIndex]);
+
+  const setCurrentIndex = useCallback((index: number) => {
+    setCurrentIndexState(index);
+    persistQueue(queue, index);
+  }, [persistQueue, queue]);
+
+  const setIsPlayerVisible = useCallback((visible: boolean) => {
+    setIsPlayerVisibleState(visible);
+    persistPlayerVisibility(visible);
+  }, [persistPlayerVisibility]);
 
   const playSong = useCallback(async (song: TaggedSong, playlist?: TaggedSong[]) => {
     setCurrentSong(song);
@@ -88,7 +134,7 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
         console.error('Failed to play on Spotify, falling back to preview:', error);
       }
     }
-  }, [isSpotifyReady, spotifyPlayer]);
+  }, [isSpotifyReady, spotifyPlayer, setCurrentSong, setQueue, setCurrentIndex, setIsPlayerVisible]);
 
   const findNextSongWithPreview = useCallback((startIndex: number, direction: 'forward' | 'backward' = 'forward') => {
     if (queue.length === 0) return null;
@@ -132,7 +178,7 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
         console.error('Failed to play playlist on Spotify, falling back to preview:', error);
       }
     }
-  }, [isSpotifyReady, spotifyPlayer]);
+  }, [isSpotifyReady, spotifyPlayer, setQueue, setCurrentIndex, setCurrentSong, setIsPlayerVisible]);
 
   const nextSong = useCallback(async () => {
     if (queue.length === 0) return;
@@ -158,7 +204,7 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
       setCurrentIndex(nextIndex);
       setCurrentSong(nextTrack);
     }
-  }, [queue, currentIndex, isSpotifyReady, spotifyPlayer]);
+  }, [queue, currentIndex, isSpotifyReady, spotifyPlayer, setCurrentIndex, setCurrentSong]);
 
   const previousSong = useCallback(async () => {
     if (queue.length === 0) return;
@@ -184,7 +230,7 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
       setCurrentIndex(prevIndex);
       setCurrentSong(prevTrack);
     }
-  }, [queue, currentIndex, isSpotifyReady, spotifyPlayer]);
+  }, [queue, currentIndex, isSpotifyReady, spotifyPlayer, setCurrentIndex, setCurrentSong]);
 
   const skipToNextWithPreview = useCallback(() => {
     const result = findNextSongWithPreview(currentIndex, 'forward');
@@ -192,7 +238,7 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
       setCurrentIndex(result.index);
       setCurrentSong(result.song);
     }
-  }, [currentIndex, findNextSongWithPreview]);
+  }, [currentIndex, findNextSongWithPreview, setCurrentIndex, setCurrentSong]);
 
   const skipToPreviousWithPreview = useCallback(() => {
     const result = findNextSongWithPreview(currentIndex, 'backward');
@@ -200,46 +246,45 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
       setCurrentIndex(result.index);
       setCurrentSong(result.song);
     }
-  }, [currentIndex, findNextSongWithPreview]);
+  }, [currentIndex, findNextSongWithPreview, setCurrentIndex, setCurrentSong]);
 
   const clearQueue = useCallback(() => {
     setQueue([]);
     setCurrentSong(null);
     setCurrentIndex(0);
     setIsPlayerVisible(false);
-  }, []);
+  }, [setQueue, setCurrentSong, setCurrentIndex, setIsPlayerVisible]);
 
   const togglePlayer = useCallback(() => {
     setIsPlayerVisible(!isPlayerVisible);
-  }, [isPlayerVisible]);
+  }, [isPlayerVisible, setIsPlayerVisible]);
 
   const addToQueue = useCallback((song: TaggedSong) => {
-    setQueue(prevQueue => [...prevQueue, song]);
-  }, []);
+    const newQueue = [...queue, song];
+    setQueue(newQueue);
+  }, [queue, setQueue]);
 
   const removeFromQueue = useCallback((index: number) => {
-    setQueue(prevQueue => {
-      const newQueue = prevQueue.filter((_, i) => i !== index);
-      
-      // Adjust current index if necessary
-      if (index < currentIndex) {
-        setCurrentIndex(prev => prev - 1);
-      } else if (index === currentIndex) {
-        // If we removed the current song, play the next one or stop
-        if (newQueue.length > 0) {
-          const newIndex = Math.min(currentIndex, newQueue.length - 1);
-          setCurrentIndex(newIndex);
-          setCurrentSong(newQueue[newIndex]);
-        } else {
-          setCurrentSong(null);
-          setCurrentIndex(0);
-          setIsPlayerVisible(false);
-        }
+    const newQueue = queue.filter((_, i) => i !== index);
+    
+    // Adjust current index if necessary
+    if (index < currentIndex) {
+      setCurrentIndex(currentIndex - 1);
+    } else if (index === currentIndex) {
+      // If we removed the current song, play the next one or stop
+      if (newQueue.length > 0) {
+        const newIndex = Math.min(currentIndex, newQueue.length - 1);
+        setCurrentIndex(newIndex);
+        setCurrentSong(newQueue[newIndex]);
+      } else {
+        setCurrentSong(null);
+        setCurrentIndex(0);
+        setIsPlayerVisible(false);
       }
-      
-      return newQueue;
-    });
-  }, [currentIndex]);
+    }
+    
+    setQueue(newQueue);
+  }, [queue, currentIndex, setQueue, setCurrentIndex, setCurrentSong, setIsPlayerVisible]);
 
   const value: MusicPlayerContextType = {
     // State
