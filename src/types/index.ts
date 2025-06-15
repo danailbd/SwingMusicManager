@@ -65,6 +65,7 @@ export interface Playlist {
   createdAt: Date;
   updatedAt: Date;
   spotifyId?: string;
+  isSpotifyPlaylist?: boolean;
   lastSyncedAt?: Date;
 }
 

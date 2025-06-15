@@ -202,4 +202,60 @@ export class SpotifyAPI {
 
     return response.json();
   }
+
+  async getPlaylistTracks(playlistId: string, offset = 0, limit = 100) {
+    if (!this.accessToken) throw new Error('No access token available');
+
+    const response = await fetch(
+      `https://api.spotify.com/v1/playlists/${playlistId}/tracks?offset=${offset}&limit=${limit}`,
+      {
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error('Failed to get playlist tracks');
+    }
+
+    return response.json();
+  }
+
+  async getPlaylist(playlistId: string) {
+    if (!this.accessToken) throw new Error('No access token available');
+
+    const response = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}`, {
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to get playlist');
+    }
+
+    return response.json();
+  }
+
+  async removeTracksFromPlaylist(playlistId: string, trackUris: string[]) {
+    if (!this.accessToken) throw new Error('No access token available');
+
+    const response = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/tracks`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        tracks: trackUris.map(uri => ({ uri })),
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to remove tracks from playlist');
+    }
+
+    return response.json();
+  }
 }
