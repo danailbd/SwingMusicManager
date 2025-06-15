@@ -38,6 +38,7 @@ interface MusicPlayerContextType {
   setIsSpotifyReady: (ready: boolean) => void;
   setSpotifyPlayerState: (state: any) => void;
   setCurrentSong: (song: TaggedSong | null) => void;
+  setCurrentIndex: (index: number) => void;
   spotifyPlayer: any;
 }
 
@@ -134,32 +135,56 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
   }, [isSpotifyReady, spotifyPlayer]);
 
   const nextSong = useCallback(async () => {
-    if (isSpotifyReady && spotifyPlayer && currentSong?.uri) {
-      try {
-        await spotifyPlayer.nextTrack();
-      } catch (error) {
-        console.error('Spotify next track error:', error);
-      }
-    } else if (queue.length === 0) return;
+    if (queue.length === 0) return;
     
     const nextIndex = (currentIndex + 1) % queue.length;
-    setCurrentIndex(nextIndex);
-    setCurrentSong(queue[nextIndex]);
-  }, [queue, currentIndex, isSpotifyReady, spotifyPlayer, currentSong]);
+    const nextTrack = queue[nextIndex];
+    
+    if (isSpotifyReady && spotifyPlayer && nextTrack?.uri) {
+      // Play the next track via Spotify
+      try {
+        await spotifyPlayer.playTrack(nextTrack.uri);
+        // Update local state
+        setCurrentIndex(nextIndex);
+        setCurrentSong(nextTrack);
+      } catch (error) {
+        console.error('Spotify next track error:', error);
+        // Fallback to manual state update
+        setCurrentIndex(nextIndex);
+        setCurrentSong(nextTrack);
+      }
+    } else {
+      // For preview mode, manually handle the queue
+      setCurrentIndex(nextIndex);
+      setCurrentSong(nextTrack);
+    }
+  }, [queue, currentIndex, isSpotifyReady, spotifyPlayer]);
 
   const previousSong = useCallback(async () => {
-    if (isSpotifyReady && spotifyPlayer && currentSong?.uri) {
-      try {
-        await spotifyPlayer.previousTrack();
-      } catch (error) {
-        console.error('Spotify previous track error:', error);
-      }
-    } else if (queue.length === 0) return;
+    if (queue.length === 0) return;
     
     const prevIndex = currentIndex === 0 ? queue.length - 1 : currentIndex - 1;
-    setCurrentIndex(prevIndex);
-    setCurrentSong(queue[prevIndex]);
-  }, [queue, currentIndex, isSpotifyReady, spotifyPlayer, currentSong]);
+    const prevTrack = queue[prevIndex];
+    
+    if (isSpotifyReady && spotifyPlayer && prevTrack?.uri) {
+      // Play the previous track via Spotify
+      try {
+        await spotifyPlayer.playTrack(prevTrack.uri);
+        // Update local state
+        setCurrentIndex(prevIndex);
+        setCurrentSong(prevTrack);
+      } catch (error) {
+        console.error('Spotify previous track error:', error);
+        // Fallback to manual state update
+        setCurrentIndex(prevIndex);
+        setCurrentSong(prevTrack);
+      }
+    } else {
+      // For preview mode, manually handle the queue
+      setCurrentIndex(prevIndex);
+      setCurrentSong(prevTrack);
+    }
+  }, [queue, currentIndex, isSpotifyReady, spotifyPlayer]);
 
   const skipToNextWithPreview = useCallback(() => {
     const result = findNextSongWithPreview(currentIndex, 'forward');
@@ -242,6 +267,7 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
     setIsSpotifyReady,
     setSpotifyPlayerState,
     setCurrentSong,
+    setCurrentIndex,
     spotifyPlayer,
   };
 

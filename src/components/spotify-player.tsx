@@ -87,12 +87,14 @@ export function SpotifyPlayer({ accessToken }: SpotifyPlayerProps) {
   const [deviceId, setDeviceId] = useState<string>('');
   const [isReady, setIsReady] = useState(false);
   const [isPremium, setIsPremium] = useState<boolean | null>(null);
-  const { currentSong, setSpotifyPlayer, setIsSpotifyReady, setSpotifyPlayerState, setCurrentSong } = useMusicPlayer();
+  const [lastTrackId, setLastTrackId] = useState<string | null>(null);
+  const { currentSong, setSpotifyPlayer, setIsSpotifyReady, setSpotifyPlayerState, setCurrentSong, queue, setCurrentIndex } = useMusicPlayer();
 
   // Function to update current song from Spotify track data
   const updateCurrentSongFromSpotify = useCallback((spotifyTrack: SpotifyTrack) => {
-    // Only update if this is a different track
-    if (currentSong?.spotifyId === spotifyTrack.id) return;
+    // Prevent duplicate updates for the same track
+    if (lastTrackId === spotifyTrack.id) return;
+    setLastTrackId(spotifyTrack.id);
 
     // Convert Spotify track to TaggedSong format
     const taggedSong = {
@@ -112,8 +114,17 @@ export function SpotifyPlayer({ accessToken }: SpotifyPlayerProps) {
       updatedAt: new Date(),
     };
 
+    // Update current song
     setCurrentSong(taggedSong);
-  }, [currentSong, setCurrentSong]);
+
+    // Update queue index if this track is in our queue
+    if (queue.length > 0) {
+      const queueIndex = queue.findIndex(song => song.spotifyId === spotifyTrack.id || song.id === spotifyTrack.id);
+      if (queueIndex >= 0) {
+        setCurrentIndex(queueIndex);
+      }
+    }
+  }, [queue, setCurrentSong, setCurrentIndex, lastTrackId]);
 
   // Load Spotify Web Playback SDK
   useEffect(() => {
