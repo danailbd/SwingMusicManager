@@ -34,6 +34,7 @@ interface MusicPlayerContextType {
   togglePlayer: () => void;
   addToQueue: (song: TaggedSong) => void;
   removeFromQueue: (index: number) => void;
+  seekToTime: (timeInSeconds: number) => void;
   
   // Spotify integration
   setSpotifyPlayer: (player: any) => void;
@@ -286,6 +287,17 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
     setQueue(newQueue);
   }, [queue, currentIndex, setQueue, setCurrentIndex, setCurrentSong, setIsPlayerVisible]);
 
+  const seekToTime = useCallback(async (timeInSeconds: number) => {
+    if (isSpotifyReady && spotifyPlayer) {
+      try {
+        await spotifyPlayer.seek(timeInSeconds * 1000); // Spotify expects milliseconds
+      } catch (error) {
+        console.error('Spotify seek error:', error);
+      }
+    }
+    // For preview mode, we can't seek, so this is primarily for Spotify
+  }, [isSpotifyReady, spotifyPlayer]);
+
   const value: MusicPlayerContextType = {
     // State
     currentSong,
@@ -306,6 +318,7 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
     togglePlayer,
     addToQueue,
     removeFromQueue,
+    seekToTime,
     
     // Spotify integration
     setSpotifyPlayer,

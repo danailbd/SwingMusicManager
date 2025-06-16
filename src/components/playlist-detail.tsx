@@ -17,6 +17,7 @@ import {
 import { Playlist, TaggedSong } from '../types';
 import { formatDuration } from '../lib/utils';
 import { useMusicPlayer } from './music-player-context';
+import SongDetails from './song-details';
 
 interface PlaylistDetailProps {
   playlist: Playlist;
@@ -27,6 +28,8 @@ interface PlaylistDetailProps {
 export function PlaylistDetail({ playlist, onBack, userId }: PlaylistDetailProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState<string>('');
+  const [selectedSong, setSelectedSong] = useState<TaggedSong | null>(null);
+  const [showSongDetails, setShowSongDetails] = useState(false);
   const [notification, setNotification] = useState<{
     type: 'success' | 'error';
     message: string;
@@ -102,6 +105,11 @@ export function PlaylistDetail({ playlist, onBack, userId }: PlaylistDetailProps
       const convertedSongs = playlist.songs.map(convertSongForPlayer);
       playSong(convertedSongs[0], convertedSongs);
     }
+  };
+
+  const handleSongClick = (song: TaggedSong) => {
+    setSelectedSong(song);
+    setShowSongDetails(true);
   };
 
   const playableSongs = playlist.songs.filter(song => 
@@ -316,7 +324,8 @@ export function PlaylistDetail({ playlist, onBack, userId }: PlaylistDetailProps
               return (
               <div
                 key={`${song.id}-${originalIndex}`}
-                className="bg-white/5 rounded-lg p-4 hover:bg-white/10 transition-colors duration-200"
+                className="bg-white/5 rounded-lg p-4 hover:bg-white/10 transition-colors duration-200 cursor-pointer"
+                onClick={() => handleSongClick(song)}
               >
                 <div className="flex items-center space-x-4">
                   {/* Track Number */}
@@ -377,6 +386,7 @@ export function PlaylistDetail({ playlist, onBack, userId }: PlaylistDetailProps
                       href={song.spotifyUrl}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
                       className="p-2 text-gray-400 hover:text-green-400 hover:bg-green-500/10 rounded-lg transition-colors duration-200"
                       title="Open in Spotify"
                     >
@@ -385,7 +395,10 @@ export function PlaylistDetail({ playlist, onBack, userId }: PlaylistDetailProps
 
                     {(isSpotifyReady && song.uri) || song.previewUrl ? (
                       <button
-                        onClick={() => handlePlaySong(song)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handlePlaySong(song);
+                        }}
                         className={`p-2 rounded-lg transition-colors duration-200 relative ${
                           currentSong?.id === song.id
                             ? 'text-green-400 bg-green-500/20'
@@ -444,6 +457,16 @@ export function PlaylistDetail({ playlist, onBack, userId }: PlaylistDetailProps
           </div>
         </div>
       )}
+
+      {/* Song Details Modal */}
+      <SongDetails
+        song={selectedSong}
+        isOpen={showSongDetails}
+        onClose={() => {
+          setShowSongDetails(false);
+          setSelectedSong(null);
+        }}
+      />
     </div>
   );
 }

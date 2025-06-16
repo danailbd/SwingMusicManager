@@ -6,6 +6,7 @@ import { MagnifyingGlassIcon, FunnelIcon, PlayIcon, ArrowTopRightOnSquareIcon, C
 import { TaggedSong, Tag } from '@/types';
 import { formatDuration } from '@/lib/utils';
 import { useMusicPlayer } from './music-player-context';
+import SongDetails from './song-details';
 import { 
   collection, 
   query, 
@@ -22,7 +23,14 @@ interface SongLibraryProps {
 export function SongLibrary({ userId }: SongLibraryProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTagFilter, setSelectedTagFilter] = useState<string>('');
+  const [selectedSong, setSelectedSong] = useState<TaggedSong | null>(null);
+  const [showSongDetails, setShowSongDetails] = useState(false);
   const { playSong, playPlaylist, currentSong, isSpotifyReady } = useMusicPlayer();
+
+  const handleSongClick = (song: TaggedSong) => {
+    setSelectedSong(song);
+    setShowSongDetails(true);
+  };
 
   // Fetch user's tags for filtering
   const { data: tags = [] } = useQuery({
@@ -171,7 +179,8 @@ export function SongLibrary({ userId }: SongLibraryProps) {
             {filteredSongs.map((song) => (
               <div
                 key={song.id}
-                className="bg-white/5 rounded-lg p-4 hover:bg-white/10 transition-colors duration-200"
+                className="bg-white/5 rounded-lg p-4 hover:bg-white/10 transition-colors duration-200 cursor-pointer"
+                onClick={() => handleSongClick(song)}
               >
                 <div className="flex items-center space-x-4">
                   {/* Album Art */}
@@ -230,6 +239,7 @@ export function SongLibrary({ userId }: SongLibraryProps) {
                       href={song.spotifyUrl}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
                       className="p-2 text-gray-400 hover:text-green-400 hover:bg-green-500/10 rounded-lg transition-colors duration-200"
                       title="Open in Spotify"
                     >
@@ -238,7 +248,10 @@ export function SongLibrary({ userId }: SongLibraryProps) {
 
                     {isSpotifyReady && song.uri ? (
                       <button
-                        onClick={() => playSong(song, filteredSongs)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          playSong(song, filteredSongs);
+                        }}
                         className={`p-2 transition-colors duration-200 rounded-lg ${
                           currentSong?.id === song.id 
                             ? 'text-green-400 bg-green-500/20' 
@@ -251,7 +264,10 @@ export function SongLibrary({ userId }: SongLibraryProps) {
                       </button>
                     ) : song.previewUrl ? (
                       <button
-                        onClick={() => playSong(song, filteredSongs)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          playSong(song, filteredSongs);
+                        }}
                         className={`p-2 transition-colors duration-200 rounded-lg ${
                           currentSong?.id === song.id 
                             ? 'text-green-400 bg-green-500/20' 
@@ -273,6 +289,16 @@ export function SongLibrary({ userId }: SongLibraryProps) {
           </div>
         )}
       </div>
+
+      {/* Song Details Modal */}
+      <SongDetails
+        song={selectedSong}
+        isOpen={showSongDetails}
+        onClose={() => {
+          setShowSongDetails(false);
+          setSelectedSong(null);
+        }}
+      />
     </div>
   );
 }

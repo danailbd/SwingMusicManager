@@ -56,6 +56,17 @@ export interface TaggedSong {
   updatedAt: Date;
 }
 
+export interface SongBookmark {
+  id: string;
+  songId: string;
+  userId: string;
+  timeInSeconds: number;
+  label: string;
+  description?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface Playlist {
   id: string;
   name: string;

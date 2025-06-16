@@ -8,6 +8,7 @@ import { SpotifyTrack, Tag } from '@/types';
 import { formatDuration } from '@/lib/utils';
 import { TagSelector } from './tag-selector';
 import { useMusicPlayer } from './music-player-context';
+import SongDetails from './song-details';
 import { 
   collection, 
   query as firestoreQuery, 
@@ -29,6 +30,8 @@ interface SpotifyTrackWithTags extends SpotifyTrack {
 export function SearchResults({ query, spotifyApi, userId }: SearchResultsProps) {
   const [selectedTrack, setSelectedTrack] = useState<SpotifyTrack | null>(null);
   const [showTagSelector, setShowTagSelector] = useState(false);
+  const [selectedSong, setSelectedSong] = useState<any>(null);
+  const [showSongDetails, setShowSongDetails] = useState(false);
   const { playSong, currentSong, isSpotifyReady } = useMusicPlayer();
 
   // Fetch user's tags for reference
@@ -107,6 +110,12 @@ export function SearchResults({ query, spotifyApi, userId }: SearchResultsProps)
     updatedAt: new Date(),
   });
 
+  const handleSongClick = (track: SpotifyTrack) => {
+    const convertedSong = convertToTaggedSong(track);
+    setSelectedSong(convertedSong);
+    setShowSongDetails(true);
+  };
+
   if (!query) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -167,7 +176,8 @@ export function SearchResults({ query, spotifyApi, userId }: SearchResultsProps)
         {tracks.map((track: SpotifyTrack) => (
           <div
             key={track.id}
-            className="bg-white/5 backdrop-blur-sm rounded-lg p-4 hover:bg-white/10 transition-colors duration-200"
+            className="bg-white/5 backdrop-blur-sm rounded-lg p-4 hover:bg-white/10 transition-colors duration-200 cursor-pointer"
+            onClick={() => handleSongClick(track)}
           >
             <div className="flex items-center space-x-4">
               {/* Album Art */}
@@ -223,7 +233,10 @@ export function SearchResults({ query, spotifyApi, userId }: SearchResultsProps)
               {/* Actions */}
               <div className="flex items-center space-x-2">
                 <button
-                  onClick={() => handleTagTrack(track)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleTagTrack(track);
+                  }}
                   className="p-2 text-gray-400 hover:text-green-400 hover:bg-green-500/10 rounded-lg transition-colors duration-200"
                   title="Add tags"
                 >
@@ -234,6 +247,7 @@ export function SearchResults({ query, spotifyApi, userId }: SearchResultsProps)
                   href={track.external_urls.spotify}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
                   className="p-2 text-gray-400 hover:text-green-400 hover:bg-green-500/10 rounded-lg transition-colors duration-200"
                   title="Open in Spotify"
                 >
@@ -242,7 +256,8 @@ export function SearchResults({ query, spotifyApi, userId }: SearchResultsProps)
 
                 {(isSpotifyReady && track.uri) || track.preview_url ? (
                   <button
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       const taggedSong = convertToTaggedSong(track);
                       const allTaggedSongs = tracks
                         .filter((t: SpotifyTrack) => (isSpotifyReady && t.uri) || t.preview_url)
@@ -283,6 +298,16 @@ export function SearchResults({ query, spotifyApi, userId }: SearchResultsProps)
           }}
         />
       )}
+
+      {/* Song Details Modal */}
+      <SongDetails
+        song={selectedSong}
+        isOpen={showSongDetails}
+        onClose={() => {
+          setShowSongDetails(false);
+          setSelectedSong(null);
+        }}
+      />
     </>
   );
 }
