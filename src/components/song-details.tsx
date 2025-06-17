@@ -27,6 +27,18 @@ import {
 import { TaggedSong, Tag, Playlist, SongBookmark } from '@/types';
 import { formatDuration } from '@/lib/utils';
 import { useMusicPlayer } from './music-player-context';
+import { 
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc,
+  orderBy 
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 interface SongDetailsProps {
   song: TaggedSong | null;
@@ -48,6 +60,35 @@ export default function SongDetails({ song, isOpen, onClose }: SongDetailsProps)
 
   const { playSong, currentSong, seekToTime } = useMusicPlayer();
 
+  // Function to refresh bookmarks in both local state and music player context
+  const refreshBookmarks = useCallback(async () => {
+    if (!song) return;
+    
+    try {
+      const bookmarksQuery = query(
+        collection(db, 'bookmarks'),
+        where('songId', '==', song.spotifyId),
+        where('userId', '==', song.userId),
+        orderBy('timeInSeconds', 'asc')
+      );
+      const bookmarksSnapshot = await getDocs(bookmarksQuery);
+      const loadedBookmarks = bookmarksSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as SongBookmark));
+      setBookmarks(loadedBookmarks);
+      
+      // If this is the currently playing song, also update the music player context
+      if (currentSong && currentSong.spotifyId === song.spotifyId) {
+        // The music player context will automatically refresh when setCurrentSong is called
+        // but we need to trigger a refresh of the bookmarks there too
+        window.dispatchEvent(new CustomEvent('refreshBookmarks'));
+      }
+    } catch (error) {
+      console.error('Error refreshing bookmarks:', error);
+    }
+  }, [song, currentSong]);
+
   // Load song data when song changes
   useEffect(() => {
     if (song && isOpen) {
@@ -60,30 +101,7 @@ export default function SongDetails({ song, isOpen, onClose }: SongDetailsProps)
     
     setIsLoading(true);
     try {
-      // Load bookmarks (mock data for now - replace with API call)
-      const mockBookmarks: SongBookmark[] = [
-        {
-          id: '1',
-          songId: song.id,
-          userId: song.userId,
-          timeInSeconds: 30,
-          label: 'Intro End',
-          description: 'Main section starts',
-          createdAt: new Date(),
-          updatedAt: new Date()
-        },
-        {
-          id: '2',
-          songId: song.id,
-          userId: song.userId,
-          timeInSeconds: 90,
-          label: 'Drop',
-          description: 'Main drop section',
-          createdAt: new Date(),
-          updatedAt: new Date()
-        }
-      ];
-      setBookmarks(mockBookmarks);
+      await refreshBookmarks();
 
       // Load playlists containing this song (mock data for now - replace with API call)
       const mockPlaylists: Playlist[] = [
@@ -126,32 +144,67 @@ export default function SongDetails({ song, isOpen, onClose }: SongDetailsProps)
     }
   }, [song, playSong, seekToTime]);
 
-  const handleAddBookmark = () => {
+  const handleAddBookmark = async () => {
     if (!song || !newBookmark.label.trim()) return;
 
-    const bookmark: SongBookmark = {
-      id: Date.now().toString(),
-      songId: song.id,
-      userId: song.userId,
-      timeInSeconds: newBookmark.timeInSeconds,
-      label: newBookmark.label.trim(),
-      description: newBookmark.description.trim(),
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
+    try {
+      const bookmarkData = {
+        songId: song.spotifyId, // Use spotifyId to ensure consistency
+        userId: song.userId,
+        timeInSeconds: newBookmark.timeInSeconds,
+        label: newBookmark.label.trim(),
+        description: newBookmark.description.trim(),
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
 
-    setBookmarks(prev => [...prev, bookmark].sort((a, b) => a.timeInSeconds - b.timeInSeconds));
-    setNewBookmark({ timeInSeconds: 0, label: '', description: '' });
-    setShowAddBookmark(false);
+      const docRef = await addDoc(collection(db, 'bookmarks'), bookmarkData);
+      
+      const newBookmarkWithId: SongBookmark = {
+        id: docRef.id,
+        ...bookmarkData
+      };
+
+      setBookmarks(prev => [...prev, newBookmarkWithId].sort((a, b) => a.timeInSeconds - b.timeInSeconds));
+      setNewBookmark({ timeInSeconds: 0, label: '', description: '' });
+      setShowAddBookmark(false);
+      
+      // Refresh bookmarks in music player if this is the current song
+      await refreshBookmarks();
+    } catch (error) {
+      console.error('Error adding bookmark:', error);
+    }
   };
 
-  const handleUpdateBookmark = (bookmark: SongBookmark) => {
-    setBookmarks(prev => prev.map(b => b.id === bookmark.id ? bookmark : b));
-    setEditingBookmark(null);
+  const handleUpdateBookmark = async (bookmark: SongBookmark) => {
+    try {
+      const bookmarkRef = doc(db, 'bookmarks', bookmark.id);
+      const updateData = {
+        ...bookmark,
+        updatedAt: new Date()
+      };
+      
+      await updateDoc(bookmarkRef, updateData);
+      setBookmarks(prev => prev.map(b => b.id === bookmark.id ? updateData : b));
+      setEditingBookmark(null);
+      
+      // Refresh bookmarks in music player if this is the current song
+      await refreshBookmarks();
+    } catch (error) {
+      console.error('Error updating bookmark:', error);
+    }
   };
 
-  const handleDeleteBookmark = (bookmarkId: string) => {
-    setBookmarks(prev => prev.filter(b => b.id !== bookmarkId));
+  const handleDeleteBookmark = async (bookmarkId: string) => {
+    try {
+      await deleteDoc(doc(db, 'bookmarks', bookmarkId));
+      setBookmarks(prev => prev.filter(b => b.id !== bookmarkId));
+      
+      // Refresh bookmarks in music player if this is the current song
+      await refreshBookmarks();
+    } catch (error) {
+      console.error('Error deleting bookmark:', error);
+    }
   };
 
   const formatTime = (seconds: number) => {

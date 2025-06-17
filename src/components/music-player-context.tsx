@@ -10,9 +10,17 @@
 
 'use client';
 
-import { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
-import { TaggedSong } from '@/types';
+import { createContext, useContext, useState, useCallback, ReactNode, useEffect, useRef } from 'react';
+import { TaggedSong, SongBookmark } from '@/types';
 import { useAppStatePersistence } from '@/lib/use-app-state-persistence';
+import { 
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  orderBy 
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 interface MusicPlayerContextType {
   // Player state
@@ -22,6 +30,7 @@ interface MusicPlayerContextType {
   isPlayerVisible: boolean;
   isSpotifyReady: boolean;
   spotifyPlayerState: any;
+  currentSongBookmarks: SongBookmark[];
 
   // Player controls
   playSong: (song: TaggedSong, playlist?: TaggedSong[]) => void;
@@ -76,26 +85,83 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
   const [isSpotifyReady, setIsSpotifyReady] = useState(false);
   const [spotifyPlayer, setSpotifyPlayer] = useState<any>(null);
   const [spotifyPlayerState, setSpotifyPlayerState] = useState<any>(null);
+  const [currentSongBookmarks, setCurrentSongBookmarks] = useState<SongBookmark[]>([]);
+  const [isInitialized, setIsInitialized] = useState(false);
+  
+  // Use ref to track current song ID to avoid stale closure issues
+  const currentSongIdRef = useRef<string | null>(null);
 
-  // Initialize state from persistence when loaded
+  // Load bookmarks for a specific song
+  const loadBookmarksForSong = useCallback(async (songId: string, userId: string) => {
+    try {
+      const bookmarksQuery = query(
+        collection(db, 'bookmarks'),
+        where('songId', '==', songId),
+        where('userId', '==', userId),
+        orderBy('timeInSeconds', 'asc')
+      );
+      const bookmarksSnapshot = await getDocs(bookmarksQuery);
+      const bookmarks = bookmarksSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as SongBookmark));
+      
+      setCurrentSongBookmarks(bookmarks);
+    } catch (error) {
+      console.error('Error loading bookmarks for song:', error);
+      setCurrentSongBookmarks([]);
+    }
+  }, []);
+
+  // Initialize state from persistence when loaded (only once)
   useEffect(() => {
-    if (isLoaded && appState) {
+    if (isLoaded && appState && !isInitialized) {
       if (appState.currentSong) {
         setCurrentSongState(appState.currentSong);
+        currentSongIdRef.current = appState.currentSong.spotifyId;
+        // Load bookmarks for the persisted song
+        loadBookmarksForSong(appState.currentSong.spotifyId, appState.currentSong.userId);
       }
       if (appState.queue.length > 0) {
         setQueueState(appState.queue);
         setCurrentIndexState(appState.currentIndex);
       }
       setIsPlayerVisibleState(appState.isPlayerVisible);
+      setIsInitialized(true);
     }
-  }, [isLoaded, appState]);
+  }, [isLoaded, appState, isInitialized, loadBookmarksForSong]);
+
+  // Listen for bookmark refresh events
+  useEffect(() => {
+    const handleRefreshBookmarks = () => {
+      if (currentSong) {
+        loadBookmarksForSong(currentSong.spotifyId, currentSong.userId);
+      }
+    };
+
+    window.addEventListener('refreshBookmarks', handleRefreshBookmarks);
+    return () => {
+      window.removeEventListener('refreshBookmarks', handleRefreshBookmarks);
+    };
+  }, [currentSong, loadBookmarksForSong]);
 
   // Update persistence when local state changes
   const setCurrentSong = useCallback((song: TaggedSong | null) => {
+    const previousSongId = currentSongIdRef.current;
+    
     setCurrentSongState(song);
     persistCurrentSong(song);
-  }, [persistCurrentSong]);
+    
+    // Update the ref with the new song ID
+    currentSongIdRef.current = song?.spotifyId || null;
+    
+    // Load bookmarks for the new song (only if different from previous)
+    if (song && song.spotifyId !== previousSongId) {
+      loadBookmarksForSong(song.spotifyId, song.userId);
+    } else if (!song) {
+      setCurrentSongBookmarks([]);
+    }
+  }, [persistCurrentSong, loadBookmarksForSong]);
 
   const setQueue = useCallback((newQueue: TaggedSong[]) => {
     setQueueState(newQueue);
@@ -306,6 +372,7 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
     isPlayerVisible,
     isSpotifyReady,
     spotifyPlayerState,
+    currentSongBookmarks,
 
     // Controls
     playSong,

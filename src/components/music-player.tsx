@@ -12,17 +12,27 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { Dialog, Transition } from '@headlessui/react';
+import { Fragment } from 'react';
 import { 
   PlayIcon, 
   PauseIcon, 
   SpeakerWaveIcon, 
   SpeakerXMarkIcon,
   ForwardIcon,
-  BackwardIcon
+  BackwardIcon,
+  BookmarkIcon,
+  PlusIcon,
+  XMarkIcon
 } from '@heroicons/react/24/outline';
-import { TaggedSong } from '@/types';
+import { TaggedSong, SongBookmark } from '@/types';
 import { formatDuration } from '@/lib/utils';
 import { useMusicPlayer } from './music-player-context';
+import { 
+  collection, 
+  addDoc 
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import '../styles/music-player.css';
 
 interface MusicPlayerProps {
@@ -47,7 +57,15 @@ export function MusicPlayer({
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const { isSpotifyReady, spotifyPlayer, spotifyPlayerState } = useMusicPlayer();
+  
+  // Bookmark creation modal state
+  const [showBookmarkModal, setShowBookmarkModal] = useState(false);
+  const [bookmarkLabel, setBookmarkLabel] = useState('');
+  const [bookmarkDescription, setBookmarkDescription] = useState('');
+  const [isCreatingBookmark, setIsCreatingBookmark] = useState(false);
+  const [bookmarkFeedback, setBookmarkFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  
+  const { isSpotifyReady, spotifyPlayer, spotifyPlayerState, currentSongBookmarks, seekToTime } = useMusicPlayer();
 
   // Use Spotify state when available, otherwise use local audio state
   const actualIsPlaying = isSpotifyReady && spotifyPlayerState ? spotifyPlayerState.isPlaying : isPlaying;
@@ -176,6 +194,66 @@ export function MusicPlayer({
 
   const progress = actualDuration > 0 ? (actualCurrentTime / actualDuration) * 100 : 0;
 
+  // Bookmark creation functions
+  const handleCreateBookmark = () => {
+    if (!currentSong) return;
+    setShowBookmarkModal(true);
+    // Auto-generate a label based on current time
+    const minutes = Math.floor(actualCurrentTime / 60);
+    const seconds = Math.floor(actualCurrentTime % 60);
+    setBookmarkLabel(`Bookmark at ${minutes}:${seconds.toString().padStart(2, '0')}`);
+  };
+
+  const handleSaveBookmark = async () => {
+    if (!currentSong || !bookmarkLabel.trim()) return;
+    
+    setIsCreatingBookmark(true);
+    try {
+      const bookmarkData: any = {
+        songId: currentSong.spotifyId,
+        userId: currentSong.userId,
+        timeInSeconds: actualCurrentTime,
+        label: bookmarkLabel.trim(),
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      // Only add description if it's not empty (avoid undefined values)
+      const trimmedDescription = bookmarkDescription.trim();
+      if (trimmedDescription) {
+        bookmarkData.description = trimmedDescription;
+      }
+
+      await addDoc(collection(db, 'bookmarks'), bookmarkData);
+      
+      // Trigger bookmark refresh
+      window.dispatchEvent(new CustomEvent('refreshBookmarks'));
+      
+      // Show success feedback
+      setBookmarkFeedback({ type: 'success', message: 'Bookmark created successfully!' });
+      
+      // Reset form
+      setBookmarkLabel('');
+      setBookmarkDescription('');
+      setShowBookmarkModal(false);
+      
+      // Clear feedback after 3 seconds
+      setTimeout(() => setBookmarkFeedback(null), 3000);
+    } catch (error) {
+      console.error('Error creating bookmark:', error);
+      setBookmarkFeedback({ type: 'error', message: 'Failed to create bookmark. Please try again.' });
+    } finally {
+      setIsCreatingBookmark(false);
+    }
+  };
+
+  const handleCancelBookmark = () => {
+    setShowBookmarkModal(false);
+    setBookmarkLabel('');
+    setBookmarkDescription('');
+    setBookmarkFeedback(null);
+  };
+
   if (!currentSong) {
     return null;
   }
@@ -211,7 +289,7 @@ export function MusicPlayer({
           {/* Player Controls */}
           <div className="flex flex-col items-center space-y-2 flex-1 max-w-md">
             {/* Control Buttons */}
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center justify-center space-x-4">
               <button
                 onClick={onPrevious}
                 disabled={!onPrevious}
@@ -244,25 +322,87 @@ export function MusicPlayer({
               >
                 <ForwardIcon className="w-5 h-5" />
               </button>
+
+              {/* Add Bookmark Button */}
+              <div className="border-l border-gray-600 pl-4 ml-2">
+                <button
+                  onClick={handleCreateBookmark}
+                  disabled={!currentSong}
+                  className="p-2 text-gray-400 hover:text-orange-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  title="Add bookmark at current time"
+                >
+                  <PlusIcon className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Progress Bar */}
             <div className="w-full flex items-center space-x-2 text-xs text-gray-400">
               <span className="w-10 text-right">{formatDuration(actualCurrentTime * 1000)}</span>
-              <input
-                type="range"
-                min="0"
-                max={actualDuration}
-                value={actualCurrentTime}
-                onChange={handleSeek}
-                className="progress-bar flex-1"
-                style={{ 
-                  '--progress-percentage': `${progress}%` 
-                } as React.CSSProperties}
-                title="Seek"
-              />
+              <div className="flex-1 relative">
+                <input
+                  type="range"
+                  min="0"
+                  max={actualDuration}
+                  value={actualCurrentTime}
+                  onChange={handleSeek}
+                  className="progress-bar w-full"
+                  style={{ 
+                    '--progress-percentage': `${progress}%` 
+                  } as React.CSSProperties}
+                  title="Seek"
+                />
+                {/* Bookmark markers */}
+                {currentSongBookmarks.length > 0 && actualDuration > 0 && (
+                  <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
+                    {currentSongBookmarks.map((bookmark) => {
+                      const bookmarkPosition = (bookmark.timeInSeconds / actualDuration) * 100;
+                      return (
+                        <div
+                          key={bookmark.id}
+                          className="absolute top-1/2 transform -translate-y-1/2 -translate-x-1/2 pointer-events-auto cursor-pointer"
+                          style={{ left: `${bookmarkPosition}%` }}
+                          onClick={() => seekToTime(bookmark.timeInSeconds)}
+                          title={`${bookmark.label} - ${Math.floor(bookmark.timeInSeconds / 60)}:${(bookmark.timeInSeconds % 60).toString().padStart(2, '0')}`}
+                        >
+                          <BookmarkIcon className="w-3 h-3 text-orange-400 hover:text-orange-300 transition-colors" />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
               <span className="w-10">{formatDuration(actualDuration * 1000)}</span>
             </div>
+
+            {/* Bookmarks Section (when available) */}
+            {currentSongBookmarks.length > 0 && (
+              <div className="w-full mt-2">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-gray-500 flex items-center">
+                    <BookmarkIcon className="w-3 h-3 mr-1" />
+                    Bookmarks ({currentSongBookmarks.length})
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1 max-h-16 overflow-y-auto">
+                  {currentSongBookmarks.slice(0, 6).map((bookmark) => (
+                    <button
+                      key={bookmark.id}
+                      onClick={() => seekToTime(bookmark.timeInSeconds)}
+                      className="px-2 py-1 text-xs bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 rounded border border-orange-500/30 transition-colors"
+                      title={bookmark.description || bookmark.label}
+                    >
+                      {bookmark.label} ({Math.floor(bookmark.timeInSeconds / 60)}:{(bookmark.timeInSeconds % 60).toString().padStart(2, '0')})
+                    </button>
+                  ))}
+                  {currentSongBookmarks.length > 6 && (
+                    <span className="px-2 py-1 text-xs text-gray-500">
+                      +{currentSongBookmarks.length - 6} more
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Volume Control */}
@@ -342,7 +482,120 @@ export function MusicPlayer({
             )}
           </div>
         )}
+
+        {/* Bookmark Creation Feedback */}
+        {bookmarkFeedback && (
+          <div className={`text-center text-xs mt-2 ${
+            bookmarkFeedback.type === 'success' ? 'text-green-400' : 'text-red-400'
+          }`}>
+            {bookmarkFeedback.message}
+          </div>
+        )}
       </div>
+
+      {/* Bookmark Creation Modal */}
+      <Transition appear show={showBookmarkModal} as={Fragment}>
+        <Dialog as="div" className="relative z-[60]" onClose={handleCancelBookmark}>
+          <Transition.Child
+            as={Fragment}
+            enter="ease-out duration-300"
+            enterFrom="opacity-0"
+            enterTo="opacity-100"
+            leave="ease-in duration-200"
+            leaveFrom="opacity-100"
+            leaveTo="opacity-0"
+          >
+            <div className="fixed inset-0 bg-black bg-opacity-25" />
+          </Transition.Child>
+
+          <div className="fixed inset-0 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4 text-center">
+              <Transition.Child
+                as={Fragment}
+                enter="ease-out duration-300"
+                enterFrom="opacity-0 scale-95"
+                enterTo="opacity-100 scale-100"
+                leave="ease-in duration-200"
+                leaveFrom="opacity-100 scale-100"
+                leaveTo="opacity-0 scale-95"
+              >
+                <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-gray-800 p-6 text-left align-middle shadow-xl transition-all border border-gray-600">
+                  <Dialog.Title
+                    as="h3"
+                    className="text-lg font-medium leading-6 text-white mb-4 flex items-center justify-between"
+                  >
+                    <span className="flex items-center">
+                      <BookmarkIcon className="w-5 h-5 mr-2 text-orange-400" />
+                      Add Bookmark
+                    </span>
+                    <button
+                      onClick={handleCancelBookmark}
+                      className="text-gray-400 hover:text-white transition-colors"
+                    >
+                      <XMarkIcon className="w-5 h-5" />
+                    </button>
+                  </Dialog.Title>
+
+                  <div className="space-y-4">
+                    {/* Current time display */}
+                    <div className="text-sm text-gray-400">
+                      Creating bookmark at: {formatDuration(actualCurrentTime * 1000)}
+                    </div>
+
+                    {/* Bookmark label */}
+                    <div>
+                      <label htmlFor="bookmark-label" className="block text-sm font-medium text-gray-300 mb-1">
+                        Label *
+                      </label>
+                      <input
+                        id="bookmark-label"
+                        type="text"
+                        value={bookmarkLabel}
+                        onChange={(e) => setBookmarkLabel(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-600 rounded-md bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                        placeholder="e.g., Verse, Chorus, Solo..."
+                        autoFocus
+                      />
+                    </div>
+
+                    {/* Bookmark description */}
+                    <div>
+                      <label htmlFor="bookmark-description" className="block text-sm font-medium text-gray-300 mb-1">
+                        Description (optional)
+                      </label>
+                      <textarea
+                        id="bookmark-description"
+                        value={bookmarkDescription}
+                        onChange={(e) => setBookmarkDescription(e.target.value)}
+                        rows={2}
+                        className="w-full px-3 py-2 border border-gray-600 rounded-md bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                        placeholder="Additional notes about this bookmark..."
+                      />
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex space-x-3 pt-4">
+                      <button
+                        onClick={handleCancelBookmark}
+                        className="flex-1 px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 hover:bg-gray-500 rounded-md transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleSaveBookmark}
+                        disabled={!bookmarkLabel.trim() || isCreatingBookmark}
+                        className="flex-1 px-4 py-2 text-sm font-medium text-white bg-orange-600 hover:bg-orange-500 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md transition-colors"
+                      >
+                        {isCreatingBookmark ? 'Creating...' : 'Create Bookmark'}
+                      </button>
+                    </div>
+                  </div>
+                </Dialog.Panel>
+              </Transition.Child>
+            </div>
+          </div>
+        </Dialog>
+      </Transition>
     </div>
   );
 }
