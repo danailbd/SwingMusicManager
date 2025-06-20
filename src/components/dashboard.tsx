@@ -265,6 +265,7 @@ export default function Dashboard({ user, accessToken }: DashboardProps) {
                   <PlaylistLibrary 
                     userId={user.id}
                     spotifyApi={spotifyApi}
+                    user={user}
                   />
                 )}
               </>

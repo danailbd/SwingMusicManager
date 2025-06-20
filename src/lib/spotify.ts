@@ -68,17 +68,70 @@ export class SpotifyAPI {
   async getUserPlaylists() {
     if (!this.accessToken) throw new Error('No access token available');
 
-    const response = await fetch('https://api.spotify.com/v1/me/playlists', {
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-      },
-    });
+    let allPlaylists: any[] = [];
+    let offset = 0;
+    const limit = 50; // Maximum allowed by Spotify API
+    let hasMore = true;
+    let totalPlaylists = 0;
 
-    if (!response.ok) {
-      throw new Error('Failed to get user playlists');
+    while (hasMore) {
+      try {
+        const response = await fetch(
+          `https://api.spotify.com/v1/me/playlists?limit=${limit}&offset=${offset}`,
+          {
+            headers: {
+              Authorization: `Bearer ${this.accessToken}`,
+            },
+          }
+        );
+
+        if (!response.ok) {
+          const errorData = await response.text();
+          console.error('Spotify getUserPlaylists API error:', {
+            status: response.status,
+            statusText: response.statusText,
+            error: errorData
+          });
+          throw new Error(`Failed to get user playlists: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        allPlaylists = allPlaylists.concat(data.items || []);
+        
+        // Set total from first response
+        if (offset === 0) {
+          totalPlaylists = data.total || 0;
+          console.log(`Found ${totalPlaylists} total playlists, fetching in batches of ${limit}...`);
+        }
+        
+        // Check if there are more playlists to fetch
+        hasMore = data.next !== null && data.items.length === limit;
+        offset += limit;
+
+        // Safety check to prevent infinite loops
+        if (offset >= totalPlaylists) {
+          hasMore = false;
+        }
+
+        // Log progress for large collections
+        if (totalPlaylists > 100 && offset % 100 === 0) {
+          console.log(`Fetched ${allPlaylists.length}/${totalPlaylists} playlists...`);
+        }
+
+      } catch (error) {
+        console.error(`Error fetching playlists at offset ${offset}:`, error);
+        throw error;
+      }
     }
 
-    return response.json();
+    console.log(`Successfully loaded ${allPlaylists.length} playlists`);
+
+    return {
+      items: allPlaylists,
+      total: allPlaylists.length,
+      limit: limit,
+      offset: 0
+    };
   }
 
   async createPlaylist(name: string, description?: string, isPublic = false) {

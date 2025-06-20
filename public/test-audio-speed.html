@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Speed Control Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: white;
+        }
+        .controls {
+            margin: 20px 0;
+        }
+        button {
+            margin: 5px;
+            padding: 10px 15px;
+            background: #333;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #555;
+        }
+        button.active {
+            background: #007bff;
+        }
+        .status {
+            background: #333;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        audio {
+            width: 100%;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Audio Playback Speed Control Test</h1>
+    
+    <div class="status">
+        <div><strong>Current Speed:</strong> <span id="currentSpeed">1x</span></div>
+        <div><strong>Audio Element Rate:</strong> <span id="audioRate">1x</span></div>
+        <div><strong>Test Status:</strong> <span id="testStatus">Ready to test</span></div>
+    </div>
+
+    <audio id="testAudio" controls>
+        <source src="https://www.soundjay.com/misc/sounds/beep-01a.mp3" type="audio/mpeg">
+        <source src="https://www.learningcontainer.com/wp-content/uploads/2020/02/Kalimba.mp3" type="audio/mpeg">
+        Your browser does not support the audio element.
+    </audio>
+
+    <div class="controls">
+        <h3>Speed Controls</h3>
+        <button onclick="setSpeed(0.5)">0.5x (Half Speed)</button>
+        <button onclick="setSpeed(0.75)">0.75x (Slower)</button>
+        <button onclick="setSpeed(1)" class="active">1x (Normal)</button>
+        <button onclick="setSpeed(1.25)">1.25x (Faster)</button>
+        <button onclick="setSpeed(1.5)">1.5x (Much Faster)</button>
+        <button onclick="setSpeed(2)">2x (Double Speed)</button>
+    </div>
+
+    <div class="controls">
+        <h3>Playback Controls</h3>
+        <button onclick="playAudio()">Play</button>
+        <button onclick="pauseAudio()">Pause</button>
+        <button onclick="resetAudio()">Reset</button>
+    </div>
+
+    <div class="status">
+        <h3>Instructions</h3>
+        <ol>
+            <li>Click Play to start the audio</li>
+            <li>Click different speed buttons to test playback rate changes</li>
+            <li>You should hear the audio speed change immediately</li>
+            <li>The "Audio Element Rate" should match the selected speed</li>
+        </ol>
+    </div>
+
+    <script>
+        const audio = document.getElementById('testAudio');
+        const currentSpeedElement = document.getElementById('currentSpeed');
+        const audioRateElement = document.getElementById('audioRate');
+        const testStatusElement = document.getElementById('testStatus');
+        let currentSpeed = 1;
+
+        function setSpeed(speed) {
+            currentSpeed = speed;
+            audio.playbackRate = speed;
+            
+            currentSpeedElement.textContent = speed + 'x';
+            updateAudioRate();
+            
+            // Update active button
+            document.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            testStatusElement.textContent = `Speed set to ${speed}x`;
+            console.log(`Audio playback rate set to: ${speed}x`);
+        }
+
+        function updateAudioRate() {
+            audioRateElement.textContent = audio.playbackRate + 'x';
+        }
+
+        function playAudio() {
+            audio.play().then(() => {
+                testStatusElement.textContent = 'Audio playing at ' + currentSpeed + 'x speed';
+            }).catch(err => {
+                testStatusElement.textContent = 'Error playing audio: ' + err.message;
+                console.error('Audio play error:', err);
+            });
+        }
+
+        function pauseAudio() {
+            audio.pause();
+            testStatusElement.textContent = 'Audio paused';
+        }
+
+        function resetAudio() {
+            audio.currentTime = 0;
+            audio.pause();
+            setSpeed(1);
+            testStatusElement.textContent = 'Audio reset to beginning';
+        }
+
+        // Monitor audio rate changes
+        setInterval(updateAudioRate, 500);
+
+        // Handle audio events
+        audio.addEventListener('loadstart', () => {
+            testStatusElement.textContent = 'Loading audio...';
+        });
+
+        audio.addEventListener('canplay', () => {
+            testStatusElement.textContent = 'Audio ready to play';
+        });
+
+        audio.addEventListener('error', (e) => {
+            testStatusElement.textContent = 'Audio error: ' + e.message;
+            console.error('Audio error:', e);
+        });
+
+        // Initialize
+        updateAudioRate();
+    </script>
+</body>
+</html>

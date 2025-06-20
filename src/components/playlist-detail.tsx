@@ -12,12 +12,35 @@ import {
   MagnifyingGlassIcon,
   CloudArrowUpIcon,
   CheckCircleIcon,
-  XCircleIcon
+  XCircleIcon,
+  Bars3Icon
 } from '@heroicons/react/24/outline';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import {
+  useSortable,
+} from '@dnd-kit/sortable';
+import {
+  CSS,
+} from '@dnd-kit/utilities';
 import { Playlist, TaggedSong } from '../types';
 import { formatDuration } from '../lib/utils';
 import { useMusicPlayer } from './music-player-context';
 import SongDetails from './song-details';
+import { TagSelector } from './tag-selector';
 
 interface PlaylistDetailProps {
   playlist: Playlist;
@@ -25,17 +48,176 @@ interface PlaylistDetailProps {
   userId: string;
 }
 
+// Sortable Item Component
+interface SortableItemProps {
+  song: TaggedSong;
+  index: number;
+  onSongClick: (song: TaggedSong) => void;
+  onPlaySong: (song: TaggedSong) => void;
+  onTagSong: (song: TaggedSong) => void;
+  currentSong: TaggedSong | null;
+  isSpotifyReady: boolean;
+}
+
+function SortableItem({ song, index, onSongClick, onPlaySong, onTagSong, currentSong, isSpotifyReady }: SortableItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id: song.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="bg-white/5 rounded-lg p-4 hover:bg-white/10 transition-colors duration-200 cursor-pointer"
+      onClick={() => onSongClick(song)}
+    >
+      <div className="flex items-center space-x-4">
+        {/* Drag Handle */}
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing p-1 text-gray-400 hover:text-white"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Bars3Icon className="w-4 h-4" />
+        </div>
+
+        {/* Track Number */}
+        <div className="w-8 text-center text-gray-400 text-sm">
+          {index + 1}
+        </div>
+
+        {/* Album Art */}
+        <div className="flex-shrink-0">
+          {song.imageUrl ? (
+            <img
+              src={song.imageUrl}
+              alt={song.album}
+              className="w-12 h-12 rounded-lg object-cover"
+            />
+          ) : (
+            <div className="w-12 h-12 bg-gray-700 rounded-lg flex items-center justify-center">
+              <PlayIcon className="w-5 h-5 text-gray-400" />
+            </div>
+          )}
+        </div>
+
+        {/* Song Info */}
+        <div className="flex-1 min-w-0">
+          <h4 className="text-white font-medium truncate">{song.name}</h4>
+          <p className="text-gray-400 text-sm truncate">{song.artist}</p>
+          <p className="text-gray-500 text-xs truncate">{song.album}</p>
+          
+          {/* Tags */}
+          {song.tags && song.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {song.tags.slice(0, 3).map((tag) => (
+                <span
+                  key={tag.id}
+                  className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white"
+                  style={{ backgroundColor: tag.color }}
+                >
+                  {tag.name}
+                </span>
+              ))}
+              {song.tags.length > 3 && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-gray-400 bg-gray-700">
+                  +{song.tags.length - 3}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Duration */}
+        <div className="text-gray-400 text-xs">
+          {formatDuration(song.duration)}
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onTagSong(song);
+            }}
+            className="p-2 text-gray-400 hover:text-purple-400 hover:bg-purple-500/10 rounded-lg transition-colors duration-200"
+            title="Add tags"
+          >
+            <TagIcon className="w-4 h-4" />
+          </button>
+
+          <a
+            href={song.spotifyUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="p-2 text-gray-400 hover:text-green-400 hover:bg-green-500/10 rounded-lg transition-colors duration-200"
+            title="Open in Spotify"
+          >
+            <ArrowTopRightOnSquareIcon className="w-4 h-4" />
+          </a>
+
+          {(isSpotifyReady && song.uri) || song.previewUrl ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onPlaySong(song);
+              }}
+              className={`p-2 rounded-lg transition-colors duration-200 relative ${
+                currentSong?.id === song.id
+                  ? 'text-green-400 bg-green-500/20'
+                  : 'text-gray-400 hover:text-green-400 hover:bg-green-500/10'
+              }`}
+              title={isSpotifyReady && song.uri ? "Play full song via Spotify" : "Play 30-second preview"}
+            >
+              <PlayIcon className="w-4 h-4" />
+              {isSpotifyReady && song.uri && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-400 rounded-full"></span>
+              )}
+            </button>
+          ) : (
+            <div className="p-2 text-gray-600" title="No preview available">
+              <PlayIcon className="w-4 h-4 opacity-30" />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PlaylistDetail({ playlist, onBack, userId }: PlaylistDetailProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState<string>('');
   const [selectedSong, setSelectedSong] = useState<TaggedSong | null>(null);
   const [showSongDetails, setShowSongDetails] = useState(false);
+  const [selectedTrackForTagging, setSelectedTrackForTagging] = useState<any>(null);
+  const [showTagSelector, setShowTagSelector] = useState(false);
+  const [songs, setSongs] = useState<TaggedSong[]>(playlist.songs || []);
   const [notification, setNotification] = useState<{
     type: 'success' | 'error';
     message: string;
   } | null>(null);
   const { playSong, currentSong, isSpotifyReady } = useMusicPlayer();
   const queryClient = useQueryClient();
+
+  // Set up DnD sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   // Clear notification after 5 seconds
   const showNotification = (type: 'success' | 'error', message: string) => {
@@ -72,15 +254,56 @@ export function PlaylistDetail({ playlist, onBack, userId }: PlaylistDetailProps
     syncToSpotifyMutation.mutate({ action });
   };
 
+  // Update playlist mutation
+  const updatePlaylistMutation = useMutation({
+    mutationFn: async (updatedSongs: TaggedSong[]) => {
+      const response = await fetch(`/api/playlists/${playlist.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ songs: updatedSongs }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update playlist');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['playlists'] });
+      showNotification('success', 'Playlist order updated successfully');
+    },
+    onError: (error: Error) => {
+      showNotification('error', error.message);
+      // Reset to original order on error
+      setSongs(playlist.songs || []);
+    },
+  });
+
+  // Handle drag end
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = songs.findIndex((song) => song.id === active.id);
+      const newIndex = songs.findIndex((song) => song.id === over.id);
+
+      const newSongs = arrayMove(songs, oldIndex, newIndex);
+      setSongs(newSongs);
+      updatePlaylistMutation.mutate(newSongs);
+    }
+  }
+
   // Get all unique tags from the playlist songs
   const allTags = Array.from(
     new Set(
-      playlist.songs
+      songs
         ?.flatMap(song => song.tags || [])
         .map(tag => tag.id)
     )
   ).map(tagId => 
-    playlist.songs
+    songs
       ?.flatMap(song => song.tags || [])
       .find(tag => tag.id === tagId)
   ).filter((tag): tag is NonNullable<typeof tag> => tag != null);
@@ -95,14 +318,14 @@ export function PlaylistDetail({ playlist, onBack, userId }: PlaylistDetailProps
   });
 
   const handlePlaySong = (song: TaggedSong) => {
-    const convertedSongs = playlist.songs.map(convertSongForPlayer);
+    const convertedSongs = songs.map(convertSongForPlayer);
     const convertedSong = convertSongForPlayer(song);
     playSong(convertedSong, convertedSongs);
   };
 
   const handlePlayPlaylist = () => {
-    if (playlist.songs.length > 0) {
-      const convertedSongs = playlist.songs.map(convertSongForPlayer);
+    if (songs.length > 0) {
+      const convertedSongs = songs.map(convertSongForPlayer);
       playSong(convertedSongs[0], convertedSongs);
     }
   };
@@ -112,12 +335,12 @@ export function PlaylistDetail({ playlist, onBack, userId }: PlaylistDetailProps
     setShowSongDetails(true);
   };
 
-  const playableSongs = playlist.songs.filter(song => 
+  const playableSongs = songs.filter(song => 
     (isSpotifyReady && song.uri) || song.previewUrl
   );
 
   // Filter songs based on search query and selected tag
-  const filteredSongs = playlist.songs.filter(song => {
+  const filteredSongs = songs.filter(song => {
     const matchesSearch = !searchQuery || (
       song.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       song.artist.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -199,8 +422,8 @@ export function PlaylistDetail({ playlist, onBack, userId }: PlaylistDetailProps
           <div className="flex items-center space-x-4 text-sm text-gray-400">
             <span>
               {searchQuery 
-                ? `${filteredSongs.length} of ${playlist.songs?.length || 0} songs` 
-                : `${playlist.songs?.length || 0} songs`
+                ? `${filteredSongs.length} of ${songs?.length || 0} songs` 
+                : `${songs?.length || 0} songs`
               }
             </span>
             {playlist.spotifyId && (
@@ -243,7 +466,7 @@ export function PlaylistDetail({ playlist, onBack, userId }: PlaylistDetailProps
           <h2 className="text-lg font-semibold text-white">Songs</h2>
           
           {/* Search and Filter Controls */}
-          {playlist.songs && playlist.songs.length > 0 && (
+          {songs && songs.length > 0 && (
             <div className="flex items-center space-x-3">
               {/* Tag Filter */}
               {allTags.length > 0 && (
@@ -305,7 +528,7 @@ export function PlaylistDetail({ playlist, onBack, userId }: PlaylistDetailProps
           </div>
         )}
         
-        {!playlist.songs || playlist.songs.length === 0 ? (
+        {!songs || songs.length === 0 ? (
           <div className="text-center text-gray-400 py-8">
             <TagIcon className="w-12 h-12 mx-auto mb-4 opacity-50" />
             <p className="text-lg">No songs in this playlist</p>
@@ -318,110 +541,37 @@ export function PlaylistDetail({ playlist, onBack, userId }: PlaylistDetailProps
             <p className="text-sm">Try different search terms</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {filteredSongs.map((song, filteredIndex) => {
-              const originalIndex = playlist.songs.findIndex(s => s.id === song.id);
-              return (
-              <div
-                key={`${song.id}-${originalIndex}`}
-                className="bg-white/5 rounded-lg p-4 hover:bg-white/10 transition-colors duration-200 cursor-pointer"
-                onClick={() => handleSongClick(song)}
-              >
-                <div className="flex items-center space-x-4">
-                  {/* Track Number */}
-                  <div className="w-8 text-center text-gray-400 text-sm">
-                    {originalIndex + 1}
-                  </div>
-
-                  {/* Album Art */}
-                  <div className="flex-shrink-0">
-                    {song.imageUrl ? (
-                      <img
-                        src={song.imageUrl}
-                        alt={song.album}
-                        className="w-12 h-12 rounded-lg object-cover"
-                      />
-                    ) : (
-                      <div className="w-12 h-12 bg-gray-700 rounded-lg flex items-center justify-center">
-                        <PlayIcon className="w-5 h-5 text-gray-400" />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Song Info */}
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-white font-medium truncate">{song.name}</h4>
-                    <p className="text-gray-400 text-sm truncate">{song.artist}</p>
-                    <p className="text-gray-500 text-xs truncate">{song.album}</p>
-                    
-                    {/* Tags */}
-                    {song.tags && song.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {song.tags.slice(0, 3).map((tag) => (
-                          <span
-                            key={tag.id}
-                            className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white"
-                            style={{ backgroundColor: tag.color }}
-                          >
-                            {tag.name}
-                          </span>
-                        ))}
-                        {song.tags.length > 3 && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-gray-400 bg-gray-700">
-                            +{song.tags.length - 3}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Duration */}
-                  <div className="text-gray-400 text-xs">
-                    {formatDuration(song.duration)}
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center space-x-2">
-                    <a
-                      href={song.spotifyUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="p-2 text-gray-400 hover:text-green-400 hover:bg-green-500/10 rounded-lg transition-colors duration-200"
-                      title="Open in Spotify"
-                    >
-                      <ArrowTopRightOnSquareIcon className="w-4 h-4" />
-                    </a>
-
-                    {(isSpotifyReady && song.uri) || song.previewUrl ? (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handlePlaySong(song);
-                        }}
-                        className={`p-2 rounded-lg transition-colors duration-200 relative ${
-                          currentSong?.id === song.id
-                            ? 'text-green-400 bg-green-500/20'
-                            : 'text-gray-400 hover:text-green-400 hover:bg-green-500/10'
-                        }`}
-                        title={isSpotifyReady && song.uri ? "Play full song via Spotify" : "Play 30-second preview"}
-                      >
-                        <PlayIcon className="w-4 h-4" />
-                        {isSpotifyReady && song.uri && (
-                          <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-400 rounded-full"></span>
-                        )}
-                      </button>
-                    ) : (
-                      <div className="p-2 text-gray-600" title="No preview available">
-                        <PlayIcon className="w-4 h-4 opacity-30" />
-                      </div>
-                    )}
-                  </div>
-                </div>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={songs.map(song => song.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-3">
+                {(searchQuery || selectedTag ? filteredSongs : songs).map((song, index) => {
+                  const actualIndex = songs.findIndex(s => s.id === song.id);
+                  return (
+                    <SortableItem
+                      key={song.id}
+                      song={song}
+                      index={actualIndex}
+                      onSongClick={handleSongClick}
+                      onPlaySong={handlePlaySong}
+                      onTagSong={(song) => {
+                        setSelectedTrackForTagging(song);
+                        setShowTagSelector(true);
+                      }}
+                      currentSong={currentSong}
+                      isSpotifyReady={isSpotifyReady}
+                    />
+                  );
+                })}
               </div>
-              );
-            })}
-          </div>
+            </SortableContext>
+          </DndContext>
         )}
       </div>
 
@@ -467,6 +617,18 @@ export function PlaylistDetail({ playlist, onBack, userId }: PlaylistDetailProps
           setSelectedSong(null);
         }}
       />
+
+      {/* Tag Selector Modal */}
+      {showTagSelector && selectedTrackForTagging && (
+        <TagSelector
+          track={selectedTrackForTagging}
+          userId={userId}
+          onClose={() => {
+            setShowTagSelector(false);
+            setSelectedTrackForTagging(null);
+          }}
+        />
+      )}
     </div>
   );
 }
